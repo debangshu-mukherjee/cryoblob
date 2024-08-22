@@ -1,0 +1,43 @@
+{
+    "code_location": "src/arm_em/",
+    "notebooks": 
+    {
+        "old_style": "notebooks/multi_particle_old_style/",
+        "final_style": "notebooks/multi_particle_final/",
+        "combined":"notebooks/combined_processing/",
+        "single_particle":"notebooks/single_particle/"
+    },
+    "data":
+    {
+        "miguel":
+        {
+            "Grid_151": "data/cryo_em/miguel/Images-Disc1/GridSquare_25113151/Data/",
+            "Grid_153": "data/cryo_em/miguel/Images-Disc1/GridSquare_25113153/Data/"
+        },
+        "PLGA":
+        {
+            "Exported": "data/cryo_em/PLGA/Exported/",
+            "Raw": "data/cryo_em/PLGA/RAW/",
+            "use": "data/cryo_em/PLGA/use/"
+        },
+        "PLGA_LA":
+        {
+            "Data": "data/cryo_em/PLGA_LA/Data/",
+            "FoilHoles": "data/cryo_em/PLGA_LA/FoilHoles/"
+        },
+        "PLGA_LA_DOTA":
+        {
+            "Exported": "data/cryo_em/PLGA_LA_DOTA/Exported/",
+            "Raw": "data/cryo_em/PLGA_LA_DOTA/RAW/",
+            "use": "data/cryo_em/PLGA_LA_DOTA/use/"
+        }
+    },
+    "results":
+    {
+        "miguel": "data/results/figures_miguel/",
+        "PLGA": "data/results/figures_PLGA/",
+        "PLGA_LA": "data/results/figures_PLGA_LA/",
+        "PLGA_LA_DOTA": "data/results/figures_PLGA_LA_DOTA/"
+    }
+  }
+  
