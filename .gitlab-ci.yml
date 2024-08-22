@@ -1,0 +1,25 @@
+stages:
+  - test
+
+variables:
+  GIT_STRATEGY: clone
+
+# This import is for the func_rse_docker_* functions
+before_script:
+  - curl https://code.ornl.gov/rse-deployment/rse-sharables/raw/master/rse-bash-modules.sh -O
+  - source rse-bash-modules.sh
+  - func_rse_docker_cleanup
+  - docker login --username=$CI_REGISTRY_USER --password=$CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+after_script:
+  - source rse-bash-modules.sh
+  - func_rse_docker_cleanup
+  - sudo chown -R gitlab-runner .
+
+
+test-job:
+  stage: test
+  script:
+    - echo "hello world from cyroem!"
+  tags:
+    - intersect-sdk-builder
