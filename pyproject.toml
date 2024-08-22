@@ -27,7 +27,7 @@ dependencies = [
     "ipywidgets >= 8.1.0",
     "tqdm >= 4.66.0",
     "black >= 23.10.0",
-    "py-open-fonts >= 0.7.0",
+    "pandas >= 2.0.0",
 ]
 
 [project.optional-dependencies]
