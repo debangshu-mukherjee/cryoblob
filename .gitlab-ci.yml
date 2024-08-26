@@ -1,4 +1,5 @@
 stages:
+  - build
   - test
 
 variables:
@@ -16,10 +17,28 @@ after_script:
   - func_rse_docker_cleanup
   - sudo chown -R gitlab-runner .
 
-
-test-job:
-  stage: test
+container-build:
+  stage: build
   script:
-    - echo "hello world from cyroem!"
+    - >
+      docker build
+      -f Dockerfile
+      -t cryoem-particle-finding .
+    - docker tag cryoem-particle-finding $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA
+    - docker tag cryoem-particle-finding $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:latest
+    - docker push $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:latest
   tags:
     - intersect-sdk-builder
+
+lint:
+  stage: test
+  script:
+    - >
+      docker run --rm $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA sh -ec "
+      black --check src/ tests/
+      "
+  tags:
+    - intersect-sdk-builder
+
+
