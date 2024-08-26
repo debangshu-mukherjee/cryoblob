@@ -1,0 +1,54 @@
+stages:
+  - build
+  - test
+
+variables:
+  GIT_STRATEGY: clone
+
+# This import is for the func_rse_docker_* functions
+before_script:
+  - curl https://code.ornl.gov/rse-deployment/rse-sharables/raw/master/rse-bash-modules.sh -O
+  - source rse-bash-modules.sh
+  - func_rse_docker_cleanup
+  - docker login --username=$CI_REGISTRY_USER --password=$CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+after_script:
+  - source rse-bash-modules.sh
+  - func_rse_docker_cleanup
+  - sudo chown -R gitlab-runner .
+
+container-build:
+  stage: build
+  script:
+    - >
+      docker build
+      -f Dockerfile
+      -t cryoem-particle-finding .
+    - docker tag cryoem-particle-finding $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA
+    - docker tag cryoem-particle-finding $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:latest
+    - docker push $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:latest
+  tags:
+    - intersect-sdk-builder
+
+lint:
+  stage: test
+  script:
+    - >
+      docker run --rm $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA sh -ec "
+      black --check src/ tests/
+      "
+  tags:
+    - intersect-sdk-builder
+
+test:
+  stage: test
+  script:
+    - >
+      docker run --rm $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA sh -ec "
+      pytest tests/
+      "
+  tags:
+    - intersect-sdk-builder
+
+
