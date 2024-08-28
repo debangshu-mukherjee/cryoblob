@@ -1,7 +1,7 @@
 stages:
   - build
   - test
-  - publish-package
+  - package
 
 variables:
   GIT_STRATEGY: clone
