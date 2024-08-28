@@ -5,7 +5,7 @@ try:
 except ImportError:
     import numpy as xp
     import scipy.ndimage as xnd
-    import scipy.scipy.signal as xsig
+    import scipy.signal as xsig
 
 from arm_em.utilities import laplacian_gaussian, preprocessing
 
