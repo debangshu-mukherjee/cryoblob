@@ -7,7 +7,11 @@ except ImportError:
 
 import pytest
 from arm_em.blob_detection import blob_list
-from jaxtyping import Float
+
+try:
+    from jaxtyping import Float
+except ImportError:
+    from typing import Float
 
 
 class TestBlobList:
