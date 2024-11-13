@@ -85,9 +85,9 @@ target/
 /src/.ipynb_checkpoints/
 /notebooks/.ipynb_checkpoints/
 /src/arm_em/params/.ipynb_checkpoints/
-/src/arm_em/.ipynb_checkpoints/
-/tests/.ipynb_checkpoints/
-/data/.ipynb_checkpoints/
+/src/arm_em/.ipynb_checkpoints
+/tests/.ipynb_checkpoints
+/data/.ipynb_checkpoints
 /data/miguel/.ipynb_checkpoints/
 /data/miguel/Images-Disc1/.ipynb_checkpoints/
 /data/miguel/Images-Disc1/GridSquare_25113151/.ipynb_checkpoints/

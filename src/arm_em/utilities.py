@@ -276,7 +276,7 @@ def preprocessing(
             image_proc, sigma=background
         )
     if apply_filter > 0:
-        image_proc = xsig.wiener(image_proc, mysize=apply_filter)
+        image_proc = arm_em.wiener(image_proc, kernel_size=apply_filter)
     if return_params:
         return image_proc, processing_params
     else:
@@ -656,3 +656,70 @@ def equalize_adapthist(
             )
 
     return equalized
+
+
+@jax.jit
+def wiener(
+    img: Float[Array, "h w"],
+    kernel_size: Union[int, Tuple[int, int]] | None = 3,
+    noise: float | None = None,
+) -> Float[Array, "h w"]:
+    """
+    Description
+    -----------
+    JAX implementation of Wiener filter for noise reduction.
+    This is similar to scipy.signal.wiener.
+
+    Parameters
+    ----------
+    - `img` (Float[Array, "h w"]):
+        The input image to be filtered
+    - `kernel_size` (int or tuple, optional):
+        The size of the sliding window for local statistics.
+        If tuple, represents (height, width).
+        Default is 3
+    - `noise` (float, optional):
+        The noise power. If None, uses the average of the
+        local variance.
+        Default is None
+
+    Returns
+    -------
+    - `filtered` (Float[Array, "h w"]):
+        The filtered output with the same shape as input
+
+    Notes
+    -----
+    The Wiener filter is optimal in terms of the mean square error.
+    It estimates the local mean and variance around each pixel.
+    """
+    # Handle kernel size input
+    if isinstance(kernel_size, int):
+        kernel_size: Integer[Array, "2"] = jnp.asarray((kernel_size, kernel_size))
+
+    # Create uniform kernel for local means
+    kernel: Float[Array, "ksize ksize"] = jnp.ones(
+        shape=kernel_size, dtype=jnp.float64
+    ) / (kernel_size[0] * kernel_size[1])
+
+    # Calculate local mean using convolution
+    local_mean: Float[Array, "h w"] = signal.convolve2d(img, kernel, mode="same")
+
+    # Calculate local variance using convolution
+    local_var: Float[Array, "h w"] = signal.convolve2d(
+        jnp.square(img), kernel, mode="same"
+    ) - jnp.square(local_mean)
+
+    # Ensure variance is positive
+    local_var = jnp.maximum(local_var, 0)
+
+    if noise is None:
+        # Estimate noise as the average of the local variances
+        noise = jnp.mean(local_var)
+
+    # Apply Wiener filter
+    filtered: Float[Array, "h w"] = local_mean + (
+        (local_var - noise) / jnp.maximum(local_var, noise)
+    ) * (img - local_mean)
+
+    return filtered

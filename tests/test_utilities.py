@@ -8,7 +8,7 @@ import pytest
 jax.config.update("jax_enable_x64", True)
 
 # Import your functions here
-from arm_em import fast_resizer, gaussian_kernel
+from arm_em import fast_resizer, gaussian_kernel, wiener
 
 if __name__ == "__main__":
     pytest.main([__file__])
@@ -252,3 +252,155 @@ class test_gaussian_kernel(chex.TestCase):
         check_monotonic(kernel[center, :])
         # Check center column
         check_monotonic(kernel[:, center])
+        
+        
+class test_wiener(chex.TestCase):
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.rng = random.PRNGKey(0)
+        self.test_image = random.uniform(self.rng, (10, 10))
+        
+    @chex.all_variants
+    @parameterized.parameters(
+        {"shape": (10, 10), "kernel_size": 3},
+        {"shape": (32, 48), "kernel_size": 5},
+        {"shape": (100, 150), "kernel_size": (3, 5)},
+        {"shape": (3, 5), "kernel_size": (5, 3)},
+    )
+    def test_output_shapes(self, shape, kernel_size):
+        """Test if output shape matches input shape for various configurations."""
+        var_wiener = self.variant(wiener)
+        image = random.uniform(self.rng, shape)
+        result = var_wiener(image, kernel_size)
+        chex.assert_shape(result, shape)
+    
+    @chex.all_variants
+    @parameterized.parameters(
+        {"noise_level": 0.1, "kernel_size": 3},
+        {"noise_level": 0.5, "kernel_size": 5},
+        {"noise_level": 1.0, "kernel_size": (3, 5)},
+    )
+    def test_noise_reduction(self, noise_level, kernel_size):
+        """Test if filter reduces noise in image."""
+        var_wiener = self.variant(wiener)
+        
+        # Create noisy image
+        clean_image = jnp.ones((20, 20))
+        noise = random.normal(self.rng, clean_image.shape) * noise_level
+        noisy_image = clean_image + noise
+        
+        # Apply filter
+        filtered = var_wiener(noisy_image, kernel_size)
+        
+        # Check if noise is reduced
+        noisy_variance = jnp.var(noisy_image)
+        filtered_variance = jnp.var(filtered)
+        assert filtered_variance < noisy_variance, \
+            f"Filtered variance ({filtered_variance}) not less than noisy variance ({noisy_variance})"
+    
+    @chex.all_variants
+    def test_constant_image(self):
+        """Test filter behavior on constant image."""
+        var_wiener = self.variant(wiener)
+        constant_image = jnp.full((10, 10), 1.0)
+        filtered = var_wiener(constant_image)
+        
+        # Should preserve constant images
+        chex.assert_trees_all_close(filtered, constant_image, atol=1e-5)
+    
+    @chex.all_variants
+    def test_kernel_size_handling(self):
+        """Test different kernel size specifications."""
+        var_wiener = self.variant(wiener)
+        image = self.test_image
+        
+        # Test integer kernel size
+        result1 = var_wiener(image, kernel_size=3)
+        # Test tuple kernel size
+        result2 = var_wiener(image, kernel_size=(3, 3))
+        
+        # Results should be identical
+        chex.assert_trees_all_close(result1, result2)
+    
+    @chex.all_variants
+    def test_noise_parameter(self):
+        """Test explicit noise parameter vs automatic estimation."""
+        var_wiener = self.variant(wiener)
+        noisy_image = self.test_image + random.normal(self.rng, self.test_image.shape) * 0.1
+        
+        # Test with automatic noise estimation
+        result1 = var_wiener(noisy_image)
+        # Test with explicit noise parameter
+        result2 = var_wiener(noisy_image, noise=0.1)
+        
+        # Results should be different but both valid
+        assert not jnp.allclose(result1, result2)
+        chex.assert_tree_all_finite(result1)
+        chex.assert_tree_all_finite(result2)
+    
+    @chex.all_variants
+    def test_gradient_computation(self):
+        """Test if gradients can be computed."""
+        var_wiener = self.variant(wiener)
+        
+        def loss_fn(image):
+            filtered = var_wiener(image)
+            return jnp.sum(filtered)
+        
+        grad_fn = jax.grad(loss_fn)
+        grads = grad_fn(self.test_image)
+        
+        chex.assert_shape(grads, self.test_image.shape)
+        chex.assert_tree_all_finite(grads)
+    
+    @chex.all_variants
+    def test_dtype_consistency(self):
+        """Test if function preserves dtype."""
+        var_wiener = self.variant(wiener)
+        image = self.test_image.astype(jnp.float64)
+        result = var_wiener(image)
+        assert result.dtype == image.dtype
+    
+    @chex.all_variants
+    def test_edge_preservation(self):
+        """Test if filter preserves strong edges."""
+        var_wiener = self.variant(wiener)
+        
+        # Create image with step edge
+        edge_image = jnp.zeros((20, 20))
+        edge_image = edge_image.at[:, 10:].set(1.0)
+        
+        # Add noise
+        noisy_edge = edge_image + random.normal(self.rng, edge_image.shape) * 0.1
+        
+        # Filter
+        filtered = var_wiener(noisy_edge)
+        
+        # Check if edge is preserved (check middle row)
+        middle_row = filtered[10, :]
+        edge_location = jnp.argmax(jnp.abs(jnp.diff(middle_row)))
+        assert 9 <= edge_location <= 11, f"Edge not preserved at expected location"
+    
+    @chex.all_variants
+    def test_deterministic_output(self):
+        """Test if function produces consistent results."""
+        var_wiener = self.variant(wiener)
+        result1 = var_wiener(self.test_image)
+        result2 = var_wiener(self.test_image)
+        chex.assert_trees_all_close(result1, result2)
+    
+    @chex.all_variants
+    def test_extreme_values(self):
+        """Test function behavior with extreme input values."""
+        var_wiener = self.variant(wiener)
+        
+        # Test with very large values
+        large_image = self.test_image * 1e5
+        large_result = var_wiener(large_image)
+        chex.assert_tree_all_finite(large_result)
+        
+        # Test with very small values
+        small_image = self.test_image * 1e-5
+        small_result = var_wiener(small_image)
+        chex.assert_tree_all_finite(small_result)
