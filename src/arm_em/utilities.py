@@ -1,12 +1,13 @@
 import json
 import os
+from functools import partial
 from importlib.resources import files
-from typing import Any, List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Literal
 
 import jax
 import jax.numpy as jnp
 from jax import lax
-from jaxtyping import Array, Float, Real
+from jaxtyping import Array, Float, Integer, Real
 
 import arm_em
 
@@ -140,16 +141,19 @@ def file_params() -> Tuple[str, dict]:
 
 
 def laplacian_gaussian(
-    image: NDArray[Shape["*, *"], Float],
-    standard_deviation: Optional[Union[Int, Float]] = 3,
-    hist_stretch: Optional[Bool] = True,
-    sampling: Optional[Union[Float, Int]] = 1,
-    normalized: Optional[Bool] = True,
-) -> NDArray[Shape["*, *"], Float]:
+    image: Real[Array, "y x"],
+    standard_deviation: number | None = 3,
+    hist_stretch: bool | None = True,
+    sampling: number | None = 1,
+    normalized: bool | None = True,
+) -> Float[Array, "y x"]:
     """
+    Description
+    -----------
     Applies Laplacian of Gaussian (LoG) filtering to an input image.
 
-    Args:
+    Parameters
+    ----------
     - `image` (cupy.ndarray):
         An input image represented as a 2D CuPy array.
     - `standard_deviation` (int, optional):
@@ -175,26 +179,19 @@ def laplacian_gaussian(
     - If normalization is enabled, scale the filtered image by the standard deviation.
     - Return the filtered image.
     """
-    image: NDArray[Shape["*, *"], Float] = xp.asarray(image.astype(xp.float64))
+    sampled_image: Float[Array, "y x"]
     if sampling != 1:
-        sampled_image: NDArray[Shape["*, *"], Float] = xnd.zoom(image, sampling)
+        sampled_image = arm_em.fast_resizer(image, sampling)
     else:
-        sampled_image: NDArray[Shape["*, *"], Float] = xp.copy(image)
+        sampled_image = jnp.asarray(image, dtype=jnp.float64)
     if hist_stretch:
         sampled_image = xexpose.equalize_hist(sampled_image)
-    gauss_image: NDArray[Shape["*, *"], Float] = xnd.gaussian_filter(
-        sampled_image, standard_deviation
-    )
-    laplacian: NDArray[Shape["3, 3"], Float] = xp.asarray(
-        (
-            (0.0, 1.0, 0.0),
-            (1.0, -4.0, 1.0),
-            (0.0, 1.0, 0.0),
-        ),
-        dtype=np.float64,
-    )
-    filtered: NDArray[Shape["*, *"], Float] = xsig.convolve2d(
-        gauss_image, laplacian, mode="same", boundary="symm", fillvalue=0
+    log_kernel: Float[Array, "3 3"] = arm_em.laplacian_kernel(mode="gaussian", size=3, sigma=standard_deviation)
+    filtered: Float[Array, "y x"] = arm_em.conv2d(
+        image=image,
+        kernel=log_kernel,
+        padding="SAME",
+        padding_mode="reflect"
     )
     if normalized:
         filtered = filtered * standard_deviation
@@ -307,35 +304,6 @@ def gaussian_kernel(size: int, sigma: float) -> Float[Array, "size size"]:
     return normalized_gaussian
 
 
-def pad_image(
-    image: Real[Array, "y x"], pad_width: int, mode: str | None = "reflect"
-) -> Real[Array, "yp xp"]:
-    """
-    Description
-    -----------
-    Pad an image with the specified mode.
-
-    Parameters
-    ----------
-    - `image` (Real[Array, "y x"]):
-        Input image to pad
-    - `pad_width` (int):
-        Number of pixels to pad on each side
-    - `mode` (str, optional):
-        Padding mode ('reflect', 'constant', or 'edge')
-        Default is 'reflect'
-
-    Returns
-    -------
-    - `padded_image` (Real[Array, "yp xp"]):
-        Padded image
-    """
-    padded_image: Real[Array, "yp xp"] = jnp.pad(
-        image, ((pad_width, pad_width), (pad_width, pad_width)), mode=mode
-    )
-    return padded_image
-
-
 @jax.jit
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
@@ -360,51 +328,93 @@ def apply_gaussian_blur(
         Padding mode ('reflect', 'constant', or 'edge')
         Default is 'reflect'
 
-    Returns:
-        Blurred image
+    Returns
+    -------
+    - `gauss_image` (Real[Array, "y x"]):
+        Image after applying Gaussian blur
+        
+    Flow
+    ----
+    - Create the Gaussian kernel
+    - Pad the image
+    - Apply convolution
+    - Return the blurred image
+    - Unpad the image to original size
     """
     # Create the Gaussian kernel
-    kernel: Float[Array, "kernel_size kernel_size"] = arm_em.gaussian_kernel(
+    gauss_kernel: Float[Array, "kernel_size kernel_size"] = arm_em.gaussian_kernel(
         kernel_size, sigma
     )
 
+    @partial(jax.jit, static_argnames=["newshape"])
+    def _centered(arr, newshape):
+        assert len(newshape) == arr.ndim
+        startind = [(s1 - s2) // 2 for s1, s2 in zip(arr.shape, newshape)]
+        return jax.lax.dynamic_slice(arr, startind, newshape)
+
     # Pad the image
     pad_width: int = kernel_size // 2
-    padded_image = arm_em.pad_image(image, pad_width, padding_mode)
+    padded_image: Real[Array, "yp xp"] = jnp.pad(
+        image, ((pad_width, pad_width), (pad_width, pad_width)), padding_mode
+    )
+    padded_gauss_image: Real[Array, "yp xp"] = arm_em.conv2d(
+        image=padded_image, kernel=gauss_kernel, padding="VALID"
+    )
+    gauss_image: Real[Array, "y x"] = _centered(padded_gauss_image, image.shape)
+    return gauss_image
 
-    # Apply the convolution
-    return conv2d(padded_image, kernel)
 
-
-@jax.jit
 def conv2d(
-    image: ArrayLike,
-    kernel: ArrayLike,
-    stride: Union[int, Tuple[int, int]] = 1,
-    padding: str = 'SAME',
-    padding_mode: str = 'reflect'
-) -> ArrayLike:
+    image: Real[Array, "ysize xsize"],
+    kernel: Integer[Array, "ksize ksize"],
+    stride: Union[int, Tuple[int, int]] | None = 1,
+    padding: str | None = "SAME",
+    padding_mode: str | None = "reflect",
+) -> Real[Array, "ypsize xpsize"]:
     """
+    Description
+    -----------
     Perform 2D convolution on an image using JAX.
-    
-    Args:
-        image: Input image with shape (height, width) or (batch, height, width)
-        kernel: Convolution kernel with shape (kernel_height, kernel_width)
-        stride: Integer or tuple of integers for stride in (height, width)
-        padding: Either 'SAME' or 'VALID'
-        padding_mode: Padding mode for 'SAME' padding ('reflect', 'constant', or 'edge')
-        
-    Returns:
-        Convolved image with appropriate shape based on padding and stride
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "ysize xsize"]):
+        Input image with shape (height, width)
+        Image dimension can be two or 3d.
+    - `kernel` (Real[Array, "ksize ksize"]):
+        Convolution kernel with shape (kernel_height, kernel_width)
+    - `stride` (int or tuple of ints, optional):
+        Stride for the convolution. Default is 1
+    - `padding` (str, optional):
+        Padding mode ('SAME' or 'VALID'). Default is 'SAME'
+    - `padding_mode` (str, optional):
+        Padding mode ('reflect', 'constant', or 'edge'). Default is 'reflect'
+
+    Returns
+    -------
+    - `output` (Real[Array, "ypsize xpsize"]):
+        Convolved image with shape (out_height, out_width)
+
+    Flow
+    ----
+    - Handle stride input
+    - Handle different input shapes
+    - Calculate padding if SAME
+    - Extract windows using lax.conv_general_dilated_patches
+    - Reshape kernel for broadcasting
+    - Apply convolution
+    - Remove extra dimensions if input was 2D
     """
     # Handle stride input
     if isinstance(stride, int):
         stride = (stride, stride)
-    
+    stride: Integer[Array, "2"] = jnp.asarray(stride)
+
     # Get shapes
     kernel_h, kernel_w = kernel.shape
-    
+
     # Handle different input shapes
+    squeeze_output: bool
     if image.ndim == 2:
         image = image[None, None, :, :]  # Add batch and channel dimensions
         squeeze_output = True
@@ -413,130 +423,175 @@ def conv2d(
         squeeze_output = False
     else:
         raise ValueError(f"Unsupported image shape: {image.shape}")
-    
+
     # Calculate padding if SAME
-    if padding == 'SAME':
-        h_pad = max(kernel_h - stride[0], 0)
-        w_pad = max(kernel_w - stride[1], 0)
+    if padding == "SAME":
+        h_pad = jnp.maximum(kernel_h - stride[0], 0)
+        w_pad = jnp.maximum(kernel_w - stride[1], 0)
         pad_top = h_pad // 2
         pad_bottom = h_pad - pad_top
         pad_left = w_pad // 2
         pad_right = w_pad - pad_left
-        
+
+        pad_vertical: Tuple[int, int] = (int(pad_top), int(pad_bottom))
+        pad_horizontal: Tuple[int, int] = (int(pad_left), int(pad_right))
+
         # Apply padding
         image = jnp.pad(
-            image,
-            ((0, 0), (0, 0), (pad_top, pad_bottom), (pad_left, pad_right)),
-            mode=padding_mode
+            image, pad_width=(pad_vertical, pad_horizontal), mode=padding_mode
         )
-    
+
     # Extract windows using lax.conv_general_dilated_patches
     windows = lax.conv_general_dilated_patches(
         image,
         filter_shape=(kernel_h, kernel_w),
-        window_strides=stride,
-        padding='VALID'
+        window_strides=(int(stride[0]), int(stride[1])),
+        padding="VALID",
     )
-    
+
     # Reshape kernel for broadcasting
     kernel_flat = kernel.reshape(-1)
-    
+
     # Apply convolution
-    output = jnp.sum(
-        windows * kernel_flat,
-        axis=-1
-    )
-    
+    output = jnp.sum(windows * kernel_flat, axis=-1)
+
     # Remove extra dimensions if input was 2D
     if squeeze_output:
         output = output[0, 0]  # Remove batch and channel dims
     elif image.ndim == 3:
         output = output[:, 0]  # Remove channel dim only
-    
+
     return output
 
-@jax.jit
-def conv2d_multi_channel(
-    image: ArrayLike,
-    kernels: ArrayLike,
-    stride: Union[int, Tuple[int, int]] = 1,
-    padding: str = 'SAME',
-    padding_mode: str = 'reflect'
-) -> ArrayLike:
+def laplacian_kernel(
+    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
+    size: int | None = 3,
+    sigma: float | None = 1.0
+) -> Float[Array, "size size"]:
     """
-    Perform 2D convolution on a multi-channel image using multiple kernels.
+    Description
+    -----------
+    Create a Laplacian kernel for edge detection.
+
+    Parameters
+    ----------
+    - `mode` (str):
+        The type of Laplacian kernel to create:
+        - "basic": Standard 4-connected Laplacian
+        - "diagonal": 8-connected Laplacian including diagonals
+        - "gaussian": Laplacian of Gaussian (LoG)
+    - `size` (int, optional):
+        The size of the kernel (will be size x size).
+        Required for 'gaussian' mode. Default is 3
+    - `sigma` (float, optional):
+        The standard deviation for Gaussian mode.
+        Only used when mode='gaussian'. Default is 1.0
+
+    Returns
+    -------
+    - `kernel` (Float[Array, "size size"]):
+        The Laplacian kernel array
+
+    Notes
+    -----
+    The kernels are:
+    - Basic: [[ 0,  1,  0],
+             [ 1, -4,  1],
+             [ 0,  1,  0]]
     
-    Args:
-        image: Input image with shape (height, width, in_channels) or (batch, height, width, in_channels)
-        kernels: Convolution kernels with shape (out_channels, kernel_height, kernel_width, in_channels)
-        stride: Integer or tuple of integers for stride in (height, width)
-        padding: Either 'SAME' or 'VALID'
-        padding_mode: Padding mode for 'SAME' padding ('reflect', 'constant', or 'edge')
+    - Diagonal: [[ 1,  1,  1],
+                [ 1, -8,  1],
+                [ 1,  1,  1]]
+    
+    - Gaussian: Laplacian of Gaussian with specified size/sigma
+    """
+    if mode == "basic":
+        kernel: Float[Array, "3 3"] = jnp.array([
+            [0,  1,  0],
+            [1, -4,  1],
+            [0,  1,  0]
+        ], dtype=jnp.float32)
+        return kernel
+    
+    elif mode == "diagonal":
+        kernel: Float[Array, "3 3"] = jnp.array([
+            [1,  1,  1],
+            [1, -8,  1],
+            [1,  1,  1]
+        ], dtype=jnp.float32)
+        return kernel
+    
+    elif mode == "gaussian":
+        # Create coordinate grid
+        x: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
+        y: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
+        X: Float[Array, "size size"]
+        Y: Float[Array, "size size"]
+        X, Y = jnp.meshgrid(x, y)
         
-    Returns:
-        Convolved image with shape (..., out_channels)
-    """
-    # Handle stride input
-    if isinstance(stride, int):
-        stride = (stride, stride)
+        # Calculate squared radius
+        R2: Float[Array, "size size"] = X**2 + Y**2
+        
+        # Calculate Laplacian of Gaussian
+        # LoG(x,y) = -1/(pi*sigma^4) * [1 - (x^2 + y^2)/(2*sigma^2)] * exp(-(x^2 + y^2)/(2*sigma^2))
+        gaussian: Float[Array, "size size"] = jnp.exp(-R2 / (2 * sigma**2))
+        kernel: Float[Array, "size size"] = -1.0 / (jnp.pi * sigma**4) * (
+            1 - R2 / (2 * sigma**2)
+        ) * gaussian
+        
+        return kernel
     
-    # Handle different input shapes
-    if image.ndim == 3:  # (H, W, C)
-        image = image[None, ...]  # Add batch dimension
-        squeeze_output = True
-    elif image.ndim == 4:  # (B, H, W, C)
-        squeeze_output = False
     else:
-        raise ValueError(f"Unsupported image shape: {image.shape}")
-    
-    # Move channels to second dimension for convolution
-    image = jnp.transpose(image, (0, 3, 1, 2))  # (B, C, H, W)
-    
-    # Get shapes
-    batch_size, in_channels, height, width = image.shape
-    out_channels, kernel_h, kernel_w, _ = kernels.shape
-    
-    # Calculate padding if SAME
-    if padding == 'SAME':
-        h_pad = max(kernel_h - stride[0], 0)
-        w_pad = max(kernel_w - stride[1], 0)
-        pad_top = h_pad // 2
-        pad_bottom = h_pad - pad_top
-        pad_left = w_pad // 2
-        pad_right = w_pad - pad_left
-        
-        # Apply padding
-        image = jnp.pad(
-            image,
-            ((0, 0), (0, 0), (pad_top, pad_bottom), (pad_left, pad_right)),
-            mode=padding_mode
+        raise ValueError(
+            f"Invalid mode '{mode}'. Must be one of: 'basic', 'diagonal', 'gaussian'"
         )
-    
-    # Reshape kernels for batch matmul
-    kernels = kernels.reshape(out_channels, -1, in_channels)  # (out_C, K*K, in_C)
-    
-    # Extract windows
-    windows = lax.conv_general_dilated_patches(
-        image,
-        filter_shape=(kernel_h, kernel_w),
-        window_strides=stride,
-        padding='VALID'
-    )  # (B, C, out_H, out_W, K*K)
-    
-    # Reshape windows for batch matmul
-    out_h, out_w = windows.shape[2:4]
-    windows = windows.transpose(0, 2, 3, 1, 4)  # (B, out_H, out_W, C, K*K)
-    windows = windows.reshape(-1, in_channels, kernel_h * kernel_w)  # (B*out_H*out_W, C, K*K)
-    
-    # Perform convolution using batch matmul
-    output = jnp.matmul(windows, kernels.transpose(0, 2, 1))  # (B*out_H*out_W, C, out_C)
-    
-    # Reshape output
-    output = output.reshape(batch_size, out_h, out_w, out_channels)
-    
-    # Remove batch dimension if input was 3D
-    if squeeze_output:
-        output = output[0]
-    
-    return output
 
+def apply_laplacian(
+    image: Real[Array, "y x"],
+    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
+    size: int | None = 3,
+    sigma: float | None = 1.0,
+    padding_mode: str | None = "reflect"
+) -> Float[Array, "y x"]:
+    """
+    Description
+    -----------
+    Apply Laplacian operator to an image for edge detection.
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "y x"]):
+        Input image to process
+    - `mode` (str, optional):
+        Type of Laplacian kernel to use. Default is "basic"
+    - `size` (int, optional):
+        Size of kernel for gaussian mode. Default is 3
+    - `sigma` (float, optional):
+        Sigma for gaussian mode. Default is 1.0
+    - `padding_mode` (str, optional):
+        Padding mode for convolution. Default is "reflect"
+
+    Returns
+    -------
+    - `edges` (Float[Array, "y x"]):
+        The detected edges in the image
+
+    Notes
+    -----
+    The Laplacian operator is used for edge detection and highlights 
+    regions of rapid intensity change in the image.
+    """
+    # Create Laplacian kernel
+    kernel: Float[Array, "size size"] = laplacian_kernel(
+        mode=mode, size=size, sigma=sigma
+    )
+    
+    # Apply convolution
+    edges: Float[Array, "y x"] = conv2d(
+        image=image,
+        kernel=kernel,
+        padding="SAME",
+        padding_mode=padding_mode
+    )
+    
+    return edges
