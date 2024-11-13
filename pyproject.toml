@@ -1,6 +1,6 @@
 [project]
 name = "arm_em"
-version = "2024.07"
+version = "2024.11"
 description = "Particle Picking of Cryo-EM Datasets"
 authors = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, {name = "Alexis N. Williams", email = "williamsan@ornl.gov"}, {name = "Albina Y. Borisevich", email = "albinab@ornl.gov"}]
 license = {file = "LICENSE"}
@@ -19,24 +19,13 @@ classifiers = [
 
 dependencies = [
     "mrcfile==1.5.0",
-    "scikit-image>=0.19.0",
     "numpy >= 1.13.0",
-    "scipy >= 1.0.0",
     "matplotlib >= 2.2.0",
     "matplotlib-scalebar >= 0.5.0",
     "ipywidgets >= 8.1.0",
     "tqdm >= 4.66.0",
-    "pandas >= 2.0.0",
-    "nptyping >= 2.0.0",
+    "jax >= 0.24.3",
     "jaxtyping >= 0.2.33, < 0.3",
-]
-
-[project.optional-dependencies]
-gpu = ["cupy>=11.0.0"]
-
-dev = [
-  "black >= 23.10.0",
-  "pytest >= 8.3.2",
 ]
 
 [project.urls]

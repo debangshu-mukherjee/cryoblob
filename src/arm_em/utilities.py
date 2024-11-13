@@ -2,18 +2,23 @@ import json
 import os
 from functools import partial
 from importlib.resources import files
-from typing import Optional, Tuple, Union, Literal
+from typing import List, Literal, Tuple, Union
 
 import jax
 import jax.numpy as jnp
+from beartype import beartype as typechecker
 from jax import lax
-from jaxtyping import Array, Float, Integer, Real
+from jax.scipy import signal
+from jaxtyping import Array, Float, Integer, Real, jaxtyped
 
 import arm_em
 
 number = Union[int, float]
 
+jax.config.update("jax_enable_x64", True)
 
+
+@jaxtyped(typechecker=typechecker)
 def fast_resizer(
     orig_image: Real[Array, "y x"],
     new_sampling: Union[number, Tuple[number, number], Real[Array, "1 2"]],
@@ -150,22 +155,30 @@ def laplacian_gaussian(
     """
     Description
     -----------
-    Applies Laplacian of Gaussian (LoG) filtering to an input image.
+    Applies Laplacian of Gaussian (LoG) filtering to an
+    input image.
 
     Parameters
     ----------
     - `image` (cupy.ndarray):
         An input image represented as a 2D CuPy array.
     - `standard_deviation` (int, optional):
-        The standard deviation of the Gaussian filter. Default is 3.
+        The standard deviation of the Gaussian filter.
+        Default is 3.
     - `hist_stretch` (bool, optional):
-        A boolean indicating whether to perform histogram stretching on the image. Default is True.
+        A boolean indicating whether to perform histogram
+        stretching on the image.
+        Default is True.
     - `sampling` (float, optional):
-        The downsampling factor for the image. Default is 1.
+        The downsampling factor for the image.
+        Default is 1.
     - `normalized` (bool, optional):
-        A boolean indicating whether to normalize the filtered image by the standard deviation. Default is True.
+        A boolean indicating whether to normalize the filtered
+        image by the standard deviation.
+        Default is True.
 
-    Returns:
+    Returns
+    -------
         - `filtered` (NDArray[Shape["*, *"], Float]):
             The laplacian of gaussian filtered image.
 
@@ -185,14 +198,11 @@ def laplacian_gaussian(
     else:
         sampled_image = jnp.asarray(image, dtype=jnp.float64)
     if hist_stretch:
-        sampled_image = xexpose.equalize_hist(sampled_image)
-    log_kernel: Float[Array, "3 3"] = arm_em.laplacian_kernel(mode="gaussian", size=3, sigma=standard_deviation)
-    filtered: Float[Array, "y x"] = arm_em.conv2d(
-        image=image,
-        kernel=log_kernel,
-        padding="SAME",
-        padding_mode="reflect"
+        sampled_image = arm_em.equalize_hist(sampled_image)
+    log_kernel: Float[Array, "3 3"] = arm_em.laplacian_kernel(
+        mode="gaussian", size=3, sigma=standard_deviation
     )
+    filtered: Float[Array, "y x"] = signal.convolve2d(image, log_kernel, mode="same")
     if normalized:
         filtered = filtered * standard_deviation
     return filtered
@@ -260,9 +270,11 @@ def preprocessing(
     if logarizer:
         image_proc = jnp.log(image_proc)
     if gblur > 0:
-        image_proc = xnd.gaussian_filter(image_proc, gblur)
+        image_proc = arm_em.apply_gaussian_blur(image_proc, sigma=gblur)
     if background > 0:
-        image_proc = image_proc - xnd.gaussian_filter(image_proc, background)
+        image_proc = image_proc - arm_em.apply_gaussian_blur(
+            image_proc, sigma=background
+        )
     if apply_filter > 0:
         image_proc = xsig.wiener(image_proc, mysize=apply_filter)
     if return_params:
@@ -307,166 +319,49 @@ def gaussian_kernel(size: int, sigma: float) -> Float[Array, "size size"]:
 @jax.jit
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
-    kernel_size: int | None = 5,
     sigma: float | None = 1.0,
-    padding_mode: str | None = "reflect",
+    kernel_size: int | None = 5,
+    mode: Literal["full", "valid", "same"] | None = "same",
 ) -> Float[Array, "yp xp"]:
     """
     Description
     -----------
-    Apply Gaussian blur to an image using JAX.
+    Apply Gaussian blur to an image using JAX's scipy signal processing.
 
     Parameters
     ----------
     - `image` (Real[Array, "y x"]):
         Input image to blur
-    - `kernel_size` (int, optional):
-        Size of the Gaussian kernel. Default is 5
     - `sigma` (float, optional):
         Standard deviation of the Gaussian kernel. Default is 1.0
-    - `padding_mode` (str, optional):
-        Padding mode ('reflect', 'constant', or 'edge')
-        Default is 'reflect'
+    - `kernel_size` (int, optional):
+        Size of the Gaussian kernel. Default is 5
+    - `mode` (str, optional):
+        The type of convolution:
+        - 'full': output is full discrete linear convolution
+        - 'valid': output consists only of elements computed without padding
+        - 'same': output is same size as input, centered
+        Default is 'same'
 
     Returns
     -------
-    - `gauss_image` (Real[Array, "y x"]):
-        Image after applying Gaussian blur
-        
-    Flow
-    ----
-    - Create the Gaussian kernel
-    - Pad the image
-    - Apply convolution
-    - Return the blurred image
-    - Unpad the image to original size
+    - `blurred` (Float[Array, "yp xp"]):
+        The blurred image
     """
     # Create the Gaussian kernel
-    gauss_kernel: Float[Array, "kernel_size kernel_size"] = arm_em.gaussian_kernel(
+    kernel: Float[Array, "kernel_size kernel_size"] = arm_em.gaussian_kernel(
         kernel_size, sigma
     )
 
-    @partial(jax.jit, static_argnames=["newshape"])
-    def _centered(arr, newshape):
-        assert len(newshape) == arr.ndim
-        startind = [(s1 - s2) // 2 for s1, s2 in zip(arr.shape, newshape)]
-        return jax.lax.dynamic_slice(arr, startind, newshape)
-
-    # Pad the image
-    pad_width: int = kernel_size // 2
-    padded_image: Real[Array, "yp xp"] = jnp.pad(
-        image, ((pad_width, pad_width), (pad_width, pad_width)), padding_mode
-    )
-    padded_gauss_image: Real[Array, "yp xp"] = arm_em.conv2d(
-        image=padded_image, kernel=gauss_kernel, padding="VALID"
-    )
-    gauss_image: Real[Array, "y x"] = _centered(padded_gauss_image, image.shape)
-    return gauss_image
-
-
-def conv2d(
-    image: Real[Array, "ysize xsize"],
-    kernel: Integer[Array, "ksize ksize"],
-    stride: Union[int, Tuple[int, int]] | None = 1,
-    padding: str | None = "SAME",
-    padding_mode: str | None = "reflect",
-) -> Real[Array, "ypsize xpsize"]:
-    """
-    Description
-    -----------
-    Perform 2D convolution on an image using JAX.
-
-    Parameters
-    ----------
-    - `image` (Real[Array, "ysize xsize"]):
-        Input image with shape (height, width)
-        Image dimension can be two or 3d.
-    - `kernel` (Real[Array, "ksize ksize"]):
-        Convolution kernel with shape (kernel_height, kernel_width)
-    - `stride` (int or tuple of ints, optional):
-        Stride for the convolution. Default is 1
-    - `padding` (str, optional):
-        Padding mode ('SAME' or 'VALID'). Default is 'SAME'
-    - `padding_mode` (str, optional):
-        Padding mode ('reflect', 'constant', or 'edge'). Default is 'reflect'
-
-    Returns
-    -------
-    - `output` (Real[Array, "ypsize xpsize"]):
-        Convolved image with shape (out_height, out_width)
-
-    Flow
-    ----
-    - Handle stride input
-    - Handle different input shapes
-    - Calculate padding if SAME
-    - Extract windows using lax.conv_general_dilated_patches
-    - Reshape kernel for broadcasting
-    - Apply convolution
-    - Remove extra dimensions if input was 2D
-    """
-    # Handle stride input
-    if isinstance(stride, int):
-        stride = (stride, stride)
-    stride: Integer[Array, "2"] = jnp.asarray(stride)
-
-    # Get shapes
-    kernel_h, kernel_w = kernel.shape
-
-    # Handle different input shapes
-    squeeze_output: bool
-    if image.ndim == 2:
-        image = image[None, None, :, :]  # Add batch and channel dimensions
-        squeeze_output = True
-    elif image.ndim == 3:
-        image = image[:, None, :, :]  # Add channel dimension
-        squeeze_output = False
-    else:
-        raise ValueError(f"Unsupported image shape: {image.shape}")
-
-    # Calculate padding if SAME
-    if padding == "SAME":
-        h_pad = jnp.maximum(kernel_h - stride[0], 0)
-        w_pad = jnp.maximum(kernel_w - stride[1], 0)
-        pad_top = h_pad // 2
-        pad_bottom = h_pad - pad_top
-        pad_left = w_pad // 2
-        pad_right = w_pad - pad_left
-
-        pad_vertical: Tuple[int, int] = (int(pad_top), int(pad_bottom))
-        pad_horizontal: Tuple[int, int] = (int(pad_left), int(pad_right))
-
-        # Apply padding
-        image = jnp.pad(
-            image, pad_width=(pad_vertical, pad_horizontal), mode=padding_mode
-        )
-
-    # Extract windows using lax.conv_general_dilated_patches
-    windows = lax.conv_general_dilated_patches(
-        image,
-        filter_shape=(kernel_h, kernel_w),
-        window_strides=(int(stride[0]), int(stride[1])),
-        padding="VALID",
-    )
-
-    # Reshape kernel for broadcasting
-    kernel_flat = kernel.reshape(-1)
-
     # Apply convolution
-    output = jnp.sum(windows * kernel_flat, axis=-1)
+    blurred: Float[Array, "y x"] = signal.convolve2d(image, kernel, mode=mode)
+    return blurred
 
-    # Remove extra dimensions if input was 2D
-    if squeeze_output:
-        output = output[0, 0]  # Remove batch and channel dims
-    elif image.ndim == 3:
-        output = output[:, 0]  # Remove channel dim only
-
-    return output
 
 def laplacian_kernel(
     mode: Literal["basic", "diagonal", "gaussian"] = "basic",
     size: int | None = 3,
-    sigma: float | None = 1.0
+    sigma: float | None = 1.0,
 ) -> Float[Array, "size size"]:
     """
     Description
@@ -498,29 +393,25 @@ def laplacian_kernel(
     - Basic: [[ 0,  1,  0],
              [ 1, -4,  1],
              [ 0,  1,  0]]
-    
+
     - Diagonal: [[ 1,  1,  1],
                 [ 1, -8,  1],
                 [ 1,  1,  1]]
-    
+
     - Gaussian: Laplacian of Gaussian with specified size/sigma
     """
     if mode == "basic":
-        kernel: Float[Array, "3 3"] = jnp.array([
-            [0,  1,  0],
-            [1, -4,  1],
-            [0,  1,  0]
-        ], dtype=jnp.float32)
+        kernel: Float[Array, "3 3"] = jnp.array(
+            [[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32
+        )
         return kernel
-    
+
     elif mode == "diagonal":
-        kernel: Float[Array, "3 3"] = jnp.array([
-            [1,  1,  1],
-            [1, -8,  1],
-            [1,  1,  1]
-        ], dtype=jnp.float32)
+        kernel: Float[Array, "3 3"] = jnp.array(
+            [[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32
+        )
         return kernel
-    
+
     elif mode == "gaussian":
         # Create coordinate grid
         x: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
@@ -528,70 +419,240 @@ def laplacian_kernel(
         X: Float[Array, "size size"]
         Y: Float[Array, "size size"]
         X, Y = jnp.meshgrid(x, y)
-        
+
         # Calculate squared radius
         R2: Float[Array, "size size"] = X**2 + Y**2
-        
+
         # Calculate Laplacian of Gaussian
         # LoG(x,y) = -1/(pi*sigma^4) * [1 - (x^2 + y^2)/(2*sigma^2)] * exp(-(x^2 + y^2)/(2*sigma^2))
         gaussian: Float[Array, "size size"] = jnp.exp(-R2 / (2 * sigma**2))
-        kernel: Float[Array, "size size"] = -1.0 / (jnp.pi * sigma**4) * (
-            1 - R2 / (2 * sigma**2)
-        ) * gaussian
-        
+        kernel: Float[Array, "size size"] = (
+            -1.0 / (jnp.pi * sigma**4) * (1 - R2 / (2 * sigma**2)) * gaussian
+        )
+
         return kernel
-    
+
     else:
         raise ValueError(
             f"Invalid mode '{mode}'. Must be one of: 'basic', 'diagonal', 'gaussian'"
         )
 
-def apply_laplacian(
-    image: Real[Array, "y x"],
-    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
-    size: int | None = 3,
-    sigma: float | None = 1.0,
-    padding_mode: str | None = "reflect"
-) -> Float[Array, "y x"]:
+
+def histogram(
+    image: Real[Array, "h w"],
+    bins: int | None = 256,
+    range_limits: Tuple[float, float] | None = None,
+) -> Integer[Array, "bins"]:
     """
     Description
     -----------
-    Apply Laplacian operator to an image for edge detection.
+    Calculate the histogram of an image.
 
     Parameters
     ----------
-    - `image` (Real[Array, "y x"]):
-        Input image to process
-    - `mode` (str, optional):
-        Type of Laplacian kernel to use. Default is "basic"
-    - `size` (int, optional):
-        Size of kernel for gaussian mode. Default is 3
-    - `sigma` (float, optional):
-        Sigma for gaussian mode. Default is 1.0
-    - `padding_mode` (str, optional):
-        Padding mode for convolution. Default is "reflect"
+    - `image` (Real[Array, "h w"]):
+        Input image
+    - `bins` (int, optional):
+        Number of bins for the histogram. Default is 256
+    - `range_limits` (Tuple[float, float], optional):
+        The lower and upper range of the bins.
+        Default is (image.min(), image.max())
 
     Returns
     -------
-    - `edges` (Float[Array, "y x"]):
-        The detected edges in the image
+    - `hist` (Integer[Array, "bins"]):
+        The histogram of the image
+    """
+    if range_limits is None:
+        range_limits = (float(image.min()), float(image.max()))
+
+    hist: Integer[Array, "bins"] = jnp.histogram(image, bins=bins, range=range_limits)[
+        0
+    ]
+    return hist
+
+
+@jax.jit
+def equalize_hist(
+    image: Real[Array, "h w"], nbins: int = 256, mask: Real[Array, "h w"] | None = None
+) -> Float[Array, "h w"]:
+    """
+    Description
+    -----------
+    Perform histogram equalization on an image using JAX.
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "h w"]):
+        Input image to equalize
+    - `nbins` (int, optional):
+        Number of bins for histogram. Default is 256
+    - `mask` (Real[Array, "h w"], optional):
+        Optional mask to use for selective equalization.
+        Only pixels where mask is True will be included in hist calculation.
+        Default is None (use all pixels)
+
+    Returns
+    -------
+    - `equalized` (Float[Array, "h w"]):
+        Histogram equalized image
 
     Notes
     -----
-    The Laplacian operator is used for edge detection and highlights 
-    regions of rapid intensity change in the image.
+    This implementation follows scikit-image's equalize_hist approach:
+    1. Compute histogram
+    2. Calculate cumulative distribution
+    3. Normalize and map values
     """
-    # Create Laplacian kernel
-    kernel: Float[Array, "size size"] = laplacian_kernel(
-        mode=mode, size=size, sigma=sigma
+    # Check if all values are the same
+    if jnp.all(image == image.ravel()[0]):
+        return jnp.full_like(image, image.ravel()[0], dtype=jnp.float32)
+
+    # Normalize image to [0, 1] range
+    img_range: float = image.max() - image.min()
+    normalized: Float[Array, "h w"] = (image - image.min()) / img_range
+
+    # Handle mask if provided
+    flat_normalized: Real[Array, "p"]
+    if mask is not None:
+        flat_mask = mask.ravel()
+        flat_normalized = jnp.compress(flat_mask, flat_normalized)
+    else:
+        flat_normalized = normalized.ravel()
+
+    # Calculate histogram
+    hist: Integer[Array, "bins"] = arm_em.histogram(
+        flat_normalized, bins=nbins, range_limits=(0.0, 1.0)
     )
-    
-    # Apply convolution
-    edges: Float[Array, "y x"] = conv2d(
-        image=image,
-        kernel=kernel,
-        padding="SAME",
-        padding_mode=padding_mode
-    )
-    
-    return edges
+
+    # Calculate cumulative distribution
+    cdf: Integer[Array, "bins"] = jnp.cumsum(hist)
+
+    # Normalize CDF
+    cdf: Float[Array, "bins"] = cdf / cdf[-1]
+
+    # Map values using linear interpolation
+    def map_values(x: Float[Array, ""]) -> Float[Array, ""]:
+        # Find bin index
+        bin_idx = jnp.clip(jnp.floor(x * (nbins - 1)).astype(jnp.int32), 0, nbins - 2)
+
+        # Get surrounding CDF values
+        cdf_left = cdf[bin_idx]
+        cdf_right = cdf[bin_idx + 1]
+
+        # Calculate fractional position within bin
+        f = (x * (nbins - 1)) - bin_idx
+
+        # Linear interpolation
+        return (1 - f) * cdf_left + f * cdf_right
+
+    # Vectorize mapping function
+    vmap_values = jax.vmap(map_values)
+
+    # Apply mapping
+    equalized: Real[Array, "h w"] = vmap_values(normalized.ravel()).reshape(image.shape)
+
+    return equalized
+
+
+@jax.jit
+def equalize_adapthist(
+    image: Real[Array, "h w"],
+    kernel_size: int = 8,
+    clip_limit: float = 0.01,
+    nbins: int = 256,
+) -> Float[Array, "h w"]:
+    """
+    Description
+    -----------
+    Perform Contrast Limited Adaptive Histogram Equalization (CLAHE).
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "h w"]):
+        Input image
+    - `kernel_size` (int, optional):
+        Size of local region for histogram equalization. Default is 8
+    - `clip_limit` (float, optional):
+        Clipping limit for histogram. Higher values give stronger contrast.
+        Default is 0.01
+    - `nbins` (int, optional):
+        Number of bins for histogram. Default is 256
+
+    Returns
+    -------
+    - `equalized` (Float[Array, "h w"]):
+        CLAHE equalized image
+    """
+    # Normalize image to [0, 1]
+    img_min = image.min()
+    img_max = image.max()
+    normalized = (image - img_min) / (img_max - img_min)
+
+    # Calculate grid size
+    h, w = normalized.shape
+    grid_h = (h + kernel_size - 1) // kernel_size
+    grid_w = (w + kernel_size - 1) // kernel_size
+
+    def process_block(block: Float[Array, "kh kw"]) -> Float[Array, "kh kw"]:
+        # Calculate histogram
+        hist = histogram(block, bins=nbins, range_limits=(0.0, 1.0))
+
+        # Clip histogram
+        if clip_limit > 0:
+            excess = jnp.sum(jnp.maximum(hist - clip_limit * block.size / nbins, 0))
+            gain = excess / (nbins * block.size)
+            hist = jnp.minimum(hist, clip_limit * block.size / nbins) + gain
+
+        # Calculate CDF
+        cdf = jnp.cumsum(hist)
+        cdf = cdf / cdf[-1]
+
+        # Map values
+        def map_value(x):
+            bin_idx = jnp.clip(
+                jnp.floor(x * (nbins - 1)).astype(jnp.int32), 0, nbins - 2
+            )
+            cdf_left = cdf[bin_idx]
+            cdf_right = cdf[bin_idx + 1]
+            f = (x * (nbins - 1)) - bin_idx
+            return (1 - f) * cdf_left + f * cdf_right
+
+        vmap_value = jax.vmap(map_value)
+        return vmap_value(block.ravel()).reshape(block.shape)
+
+    # Process each block
+    def process_grid(i, j):
+        start_h = i * kernel_size
+        start_w = j * kernel_size
+
+        # Calculate block size (handling edge cases)
+        block_h = jnp.minimum(kernel_size, h - start_h)
+        block_w = jnp.minimum(kernel_size, w - start_w)
+
+        # Use dynamic_slice instead of regular slicing
+        block = jax.lax.dynamic_slice(
+            normalized, (start_h, start_w), (block_h, block_w)
+        )
+
+        return process_block(block)
+
+    # Create output array
+    equalized = jnp.zeros_like(normalized)
+
+    # Apply CLAHE to each block
+    for i in range(grid_h):
+        for j in range(grid_w):
+            start_h = i * kernel_size
+            start_w = j * kernel_size
+            block_h = min(kernel_size, h - start_h)
+            block_w = min(kernel_size, w - start_w)
+
+            processed_block = process_grid(i, j)
+
+            # Use dynamic_update_slice for setting values
+            equalized = jax.lax.dynamic_update_slice(
+                equalized, processed_block, (start_h, start_w)
+            )
+
+    return equalized

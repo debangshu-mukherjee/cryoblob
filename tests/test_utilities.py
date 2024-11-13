@@ -1,502 +1,254 @@
-try:
-    import cupy as xp
-    import cupyx.scipy.ndimage as xnd
-    import cupyx.scipy.signal as xsig
-except ImportError:
-    import numpy as xp
-    import scipy.ndimage as xnd
-    import scipy.signal as xsig
-
-from arm_em.utilities import laplacian_gaussian, preprocessing
-
-
-class TestLaplacianGaussian:
-
-    # returns filtered image with expected shape
-    def test_filtered_image_shape(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # applies Laplacian of Gaussian filter to input image
-    def test_filtered_image_shape(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # performs histogram stretching on input image if hist_stretch is True
-    def test_performs_histogram_stretching(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # returns filtered image with expected values
-    def test_filtered_image_shape(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # returns filtered image with expected dtype
-    def test_filtered_image_dtype(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.dtype == xp.float64
-
-    # handles input image with all pixels having same value
-    def test_filtered_image_shape(self):
-        # Arrange
-        image = xp.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # handles input image with negative values
-    def test_handles_input_image_with_negative_values(self):
-        # Arrange
-        image = xp.array([[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert xp.all(
-            filtered == xp.array([[0.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 0.0]])
-        )
-
-    # handles input image with very small values
-    def test_handles_input_image_with_very_small_values(self):
-        # Arrange
-        image = xp.array(
-            [[1e-10, 2e-10, 3e-10], [4e-10, 5e-10, 6e-10], [7e-10, 8e-10, 9e-10]]
-        )
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # handles input image with very large values
-    def test_handles_input_image_with_very_large_values(self):
-        # Arrange
-        image = xp.array([[1e10, 2e10, 3e10], [4e10, 5e10, 6e10], [7e10, 8e10, 9e10]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # allows setting standard deviation of Gaussian filter
-    def test_standard_deviation(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=5, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # allows setting downsampling factor for input image
-    def test_downsampling_factor(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-        expected_shape = (2, 2)
-        downsampling_factor = 0.5
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=downsampling_factor
-        )
-
-        # Assert
-        assert filtered.shape == expected_shape
-
-    # allows disabling histogram stretching
-    def test_disable_hist_stretch(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=False, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # allows disabling normalization of filtered image
-    def test_disable_normalization(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1, normalized=False
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # returns both positive and negative filtered images
-    def test_filtered_image_shape(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # performs Gaussian filtering on input image
-    def test_filtered_image_shape(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-    # Adjusts the contrast of the input image using histogram stretching
-    def test_adjust_contrast_with_histogram_stretching(self):
-        # Arrange
-        image = xp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-
-        # Act
-        filtered = laplacian_gaussian(
-            image, standard_deviation=3, hist_stretch=True, sampling=1
-        )
-
-        # Assert
-        assert filtered.shape == (3, 3)
-
-
-class TestPreprocessing:
-
-    # correctly normalizes the input image
-    def test_correctly_normalizes_input_image(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The image was not normalized correctly."
-
-    # input image with all zero values
-    def test_input_image_all_zero_values(self):
-        image_orig = xp.zeros((2, 2), dtype=xp.float32)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        expected_output = xp.zeros((2, 2), dtype=xp.float32)
-        assert xp.allclose(
-            result, expected_output
-        ), "The function did not handle an all-zero input image correctly."
-
-    # applies logarithmic function when logarizer is True
-    def test_applies_logarithmic_function_when_logarizer_is_true(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=True,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, xp.log(expected_output)
-        ), "The logarithmic function was not applied correctly."
-
-    # applies exponential function when exponential is True
-    def test_applies_exponential_function_when_exponential_is_true(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=True,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, xp.exp(expected_output)
-        ), "The exponential function was not applied correctly."
-
-    # applies Gaussian blur with specified standard deviation
-    def test_applies_gaussian_blur(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = xnd.gaussian_filter(image_orig, 2)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=2,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The Gaussian blur was not applied correctly."
-
-    # subtracts background using Gaussian filter when background > 0
-    def test_subtracts_background_using_gaussian_filter(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=2,
-            apply_filter=0,
-        )
-        background_filtered = xnd.gaussian_filter(expected_output, 2)
-        expected_output = expected_output - background_filtered
-        assert xp.allclose(
-            result, expected_output
-        ), "Background subtraction using Gaussian filter failed."
-
-    # applies Wiener filter when apply_filter > 1
-    def test_applies_wiener_filter_when_apply_filter_gt_1(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = xsig.wiener(image_orig, mysize=3)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=3,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "Wiener filter was not applied correctly."
-
-    # handles default parameter values correctly
-    def test_handles_default_parameter_values_correctly(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(image_orig)
-        assert xp.allclose(
-            result, expected_output
-        ), "Default parameter values were not handled correctly."
-
-    # input image with all maximum values
-    def test_input_image_all_maximum_values(self):
-        image_orig = xp.ones((2, 2), dtype=xp.float32) * xp.amax(image_orig)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        expected_output = xp.ones((2, 2), dtype=xp.float32)
-        assert xp.allclose(
-            result, expected_output
-        ), "The function did not handle an input image with all maximum values correctly."
-
-    # gblur set to 0
-    def test_gblur_set_to_0(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The image was not processed correctly with gblur set to 0."
-
-    # background set to 0
-    def test_background_set_to_0(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The function did not handle background set to 0 correctly."
-
-    # apply_filter set to 0
-    def test_apply_filter_set_to_0(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The function did not handle apply_filter set to 0 correctly."
-
-    # both exponential and logarizer set to True
-    def test_both_exponential_and_logarizer_true(self):
-        image_orig = xp.array([[1.0, 2.0], [3.0, 4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=True,
-            logarizer=True,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "Exponential and logarizer not applied correctly."
-
-    # handles non-square images
-    def test_handles_non_square_images(self):
-        image_orig = xp.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The function did not handle non-square images correctly."
-
-    # handles images with negative values
-    def test_handles_images_with_negative_values(self):
-        image_orig = xp.array([[-1.0, -2.0], [-3.0, -4.0]], dtype=xp.float32)
-        expected_output = (image_orig - xp.amin(image_orig)) / (
-            xp.amax(image_orig) - xp.amin(image_orig)
-        )
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert xp.allclose(
-            result, expected_output
-        ), "The function did not handle images with negative values correctly."
-
-    # handles images with NaN or Inf values
-    def test_handles_images_with_nan_or_inf_values(self):
-        image_orig = xp.array([[1.0, xp.nan], [3.0, xp.inf]], dtype=xp.float32)
-        result = preprocessing(
-            image_orig,
-            exponential=False,
-            logarizer=False,
-            gblur=0,
-            background=0,
-            apply_filter=0,
-        )
-        assert (
-            not xp.isnan(result).any() and not xp.isinf(result).any()
-        ), "The function did not handle images with NaN or Inf values correctly."
+import jax
+import jax.numpy as jnp
+from jax import random
+from absl.testing import parameterized
+import chex
+import pytest
+
+jax.config.update("jax_enable_x64", True)
+
+# Import your functions here
+from arm_em import fast_resizer, gaussian_kernel
+
+if __name__ == "__main__":
+    pytest.main([__file__])
+
+
+class test_fast_resizer(chex.TestCase):
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.rng = random.PRNGKey(0)
+        self.base_shape = (10, 10)
+        self.base_image = random.uniform(self.rng, self.base_shape)
+
+    @chex.all_variants
+    @parameterized.parameters(
+        {"shape": (10, 10), "sampling": 0.5, "expected_shape": (20, 20)},
+        {"shape": (32, 48), "sampling": 2.0, "expected_shape": (16, 24)},
+        {"shape": (100, 150), "sampling": (0.5, 1.0), "expected_shape": (200, 150)},
+        {"shape": (3, 5), "sampling": jnp.array([[0.5, 0.75]]), "expected_shape": (6, 7)},
+    )
+    def test_output_shapes(self, shape, sampling, expected_shape):
+        var_fast_resizer = self.variant(fast_resizer)
+        image = random.uniform(self.rng, shape)
+        result = var_fast_resizer(image, sampling)
+        chex.assert_shape(result, expected_shape)
+
+    @chex.all_variants
+    @parameterized.parameters(
+        {"image": jnp.array([[1., 2.], [3., 4.]]), 
+         "sampling": 2.0, 
+         "expected": jnp.array([[2.5]])},
+        {"image": jnp.array([[1., 1.], [1., 1.]]), 
+         "sampling": 1.0, 
+         "expected": jnp.array([[1., 1.], [1., 1.]])},
+    )
+    def test_known_values(self, image, sampling, expected):
+        var_fast_resizer = self.variant(fast_resizer)
+        result = var_fast_resizer(image, sampling)
+        chex.assert_trees_all_close(result, expected, atol=1e-5)
+
+    @chex.all_variants
+    def test_batch_consistency(self):
+        var_fast_resizer = self.variant(fast_resizer)
+        batch_size = 3
+        images = random.uniform(self.rng, (batch_size,) + self.base_shape)
+        
+        # Test with vmap
+        batch_resize = jax.vmap(lambda x: var_fast_resizer(x, 0.5))
+        results = batch_resize(images)
+        
+        # Compare with individual processing
+        for i in range(batch_size):
+            individual_result = var_fast_resizer(images[i], 0.5)
+            chex.assert_trees_all_close(results[i], individual_result)
+
+    @chex.all_variants
+    def test_dtype_consistency(self):
+        var_fast_resizer = self.variant(fast_resizer)
+        dtypes = [jnp.float32, jnp.float64]
+        
+        for dtype in dtypes:
+            image = self.base_image.astype(dtype)
+            result = var_fast_resizer(image, 0.5)
+            assert result.dtype == dtype, f"Expected dtype {dtype}, got {result.dtype}"
+
+    @chex.all_variants
+    @parameterized.parameters(
+        {"sampling": 0.1},  # Very small sampling rate
+        {"sampling": 10.0},  # Very large sampling rate
+        {"sampling": (0.1, 10.0)},  # Mixed sampling rates
+    )
+    def test_extreme_sampling(self, sampling):
+        var_fast_resizer = self.variant(fast_resizer)
+        result = var_fast_resizer(self.base_image, sampling)
+        chex.assert_tree_all_finite(result)
+
+    @chex.all_variants
+    def test_gradient_computation(self):
+        var_fast_resizer = self.variant(fast_resizer)
+        
+        def loss_fn(image):
+            resized = var_fast_resizer(image, 0.5)
+            return jnp.sum(resized)
+        
+        grad_fn = jax.grad(loss_fn)
+        grads = grad_fn(self.base_image)
+        
+        chex.assert_shape(grads, self.base_shape)
+        chex.assert_tree_all_finite(grads)
+
+    @chex.all_variants
+    def test_deterministic_output(self):
+        var_fast_resizer = self.variant(fast_resizer)
+        result1 = var_fast_resizer(self.base_image, 0.5)
+        result2 = var_fast_resizer(self.base_image, 0.5)
+        chex.assert_trees_all_close(result1, result2)
+
+    @chex.all_variants
+    def test_image_range_preservation(self):
+        """Test that the resizer preserves the general range of values."""
+        var_fast_resizer = self.variant(fast_resizer)
+        test_image = jnp.array([[0.1, 0.2], [0.3, 0.4]])
+        result = var_fast_resizer(test_image, 0.5)
+        
+        # Check that output values are in reasonable range
+        assert jnp.all(result >= test_image.min() * 0.9)  # Allow for small numerical errors
+        assert jnp.all(result <= test_image.max() * 1.1)  # Allow for small numerical errors
+        
+
+class test_gaussian_kernel(chex.TestCase):
+    @chex.all_variants
+    @parameterized.parameters(
+        {"size": 3, "sigma": 1.0, "expected_shape": (3, 3)},
+        {"size": 5, "sigma": 0.5, "expected_shape": (5, 5)},
+        {"size": 7, "sigma": 2.0, "expected_shape": (7, 7)},
+        {"size": 9, "sigma": 1.5, "expected_shape": (9, 9)},
+    )
+    def test_output_shapes(self, size, sigma, expected_shape):
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        kernel = var_gaussian_kernel(size, sigma)
+        chex.assert_shape(kernel, expected_shape)
+
+    @chex.all_variants
+    def test_kernel_normalization(self):
+        """Test if kernel sums to 1."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        sizes = [3, 5, 7]
+        sigmas = [0.5, 1.0, 2.0]
+        
+        for size in sizes:
+            for sigma in sigmas:
+                kernel = var_gaussian_kernel(size, sigma)
+                kernel_sum = jnp.sum(kernel)
+                assert jnp.isclose(kernel_sum, 1.0, atol=1e-6), \
+                    f"Kernel sum = {kernel_sum} for size={size}, sigma={sigma}"
+
+    @chex.all_variants
+    def test_kernel_symmetry(self):
+        """Test if kernel is symmetric."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        size, sigma = 5, 1.0
+        kernel = var_gaussian_kernel(size, sigma)
+        
+        # Test horizontal symmetry
+        chex.assert_trees_all_close(kernel, jnp.flip(kernel, axis=0))
+        # Test vertical symmetry
+        chex.assert_trees_all_close(kernel, jnp.flip(kernel, axis=1))
+        # Test diagonal symmetry
+        chex.assert_trees_all_close(kernel, kernel.T)
+
+    @chex.all_variants
+    def test_kernel_center_maximum(self):
+        """Test if the center of the kernel has the maximum value."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        sizes = [3, 5, 7]
+        sigma = 1.0
+        
+        for size in sizes:
+            kernel = var_gaussian_kernel(size, sigma)
+            center = size // 2
+            center_value = kernel[center, center]
+            assert jnp.all(kernel <= center_value), \
+                f"Center value {center_value} is not maximum for size={size}"
+
+    @chex.all_variants
+    @parameterized.parameters(
+        {"size": 3, "sigma": 0.1},  # Small sigma
+        {"size": 3, "sigma": 10.0},  # Large sigma
+        {"size": 11, "sigma": 0.5},  # Large size, small sigma
+        {"size": 11, "sigma": 5.0},  # Large size, large sigma
+    )
+    def test_extreme_parameters(self, size, sigma):
+        """Test kernel behavior with extreme parameters."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        kernel = var_gaussian_kernel(size, sigma)
+        
+        # Check if output is finite
+        chex.assert_tree_all_finite(kernel)
+        # Check normalization
+        assert jnp.isclose(jnp.sum(kernel), 1.0, atol=1e-6)
+
+    @chex.all_variants
+    def test_kernel_values(self):
+        """Test specific known kernel values."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        size, sigma = 3, 1.0
+        kernel = var_gaussian_kernel(size, sigma)
+        
+        # Center value should be largest
+        center_value = kernel[1, 1]
+        corner_value = kernel[0, 0]
+        assert center_value > corner_value, \
+            f"Center value {center_value} not greater than corner value {corner_value}"
+
+    @chex.all_variants
+    def test_kernel_dtype(self):
+        """Test if kernel has correct dtype."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        size, sigma = 5, 1.0
+        kernel = var_gaussian_kernel(size, sigma)
+        assert isinstance(kernel, jnp.ndarray)
+        assert kernel.dtype == jnp.float32 or kernel.dtype == jnp.float64
+
+    @chex.all_variants
+    def test_gradient_computation(self):
+        """Test if gradients can be computed with respect to sigma."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        
+        def loss_fn(sigma):
+            kernel = var_gaussian_kernel(5, sigma)
+            return jnp.sum(kernel)
+        
+        grad_fn = jax.grad(loss_fn)
+        grad = grad_fn(1.0)
+        chex.assert_tree_all_finite(grad)
+
+    @chex.all_variants
+    def test_deterministic_output(self):
+        """Test if the function produces consistent results."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        kernel1 = var_gaussian_kernel(5, 1.0)
+        kernel2 = var_gaussian_kernel(5, 1.0)
+        chex.assert_trees_all_close(kernel1, kernel2)
+
+    @chex.all_variants
+    def test_decreasing_values(self):
+        """Test if values decrease monotonically from center."""
+        var_gaussian_kernel = self.variant(gaussian_kernel)
+        size = 5
+        sigma = 1.0
+        kernel = var_gaussian_kernel(size, sigma)
+        center = size // 2
+        
+        def check_monotonic(row):
+            # Check left side
+            assert jnp.all(jnp.diff(row[:center]) >= -1e-6)
+            # Check right side
+            assert jnp.all(jnp.diff(row[center:]) <= 1e-6)
+        
+        # Check center row
+        check_monotonic(kernel[center, :])
+        # Check center column
+        check_monotonic(kernel[:, center])
