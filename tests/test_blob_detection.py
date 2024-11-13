@@ -8,7 +8,7 @@ except ImportError:
 import pytest
 from arm_em.blob_detection import blob_list
 
-from jaxtyping import Float
+from nptyping import Bool, Float, Int, NDArray, Shape
 
 
 
@@ -17,7 +17,7 @@ class TestBlobList:
     # Given a valid input image, the function should return a non-empty 2D array of blob coordinates.
     def test_valid_input_image(self):
         # Initialize input image
-        image: Float[xp.ndarray, "3 3"] = xp.array(
+        image: NDArray[Shape["*, *"], Float] = xp.array(
             [[1, 1, 1], [1, 1, 1], [1, 1, 1]], dtype=xp.float64
         )
 

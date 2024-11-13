@@ -1,68 +1,67 @@
 import glob
 from typing import Optional, Union
 
-import arm_em
-
-try:
-    import cupy as xp
-    import cupyx.scipy.ndimage as xnd
-except ImportError:
-    import numpy as xp
-    import scipy.ndimage as xnd
+import jax
+import jax.numpy as jnp
 import mrcfile
 import numpy as np
 import pandas as pd
-from nptyping import Bool, DataFrame, Float, Int, NDArray, Object, Shape
-from nptyping import Structure as S
+from jaxtyping import Array, Float, Int, Shape
 from tqdm.auto import trange
+
+import arm_em
 
 
 def blob_list(
-    image: NDArray[Shape["*, *"], Float],
-    min_blob_size: Optional[Union[Float, Int]] = 10,
-    max_blob_size: Optional[Union[Float, Int]] = 100,
-    blob_step: Optional[Union[Float, Int]] = 2,
-    downscale: Optional[Union[Float, Int]] = 2,
-    std_threshold: Optional[Union[Float, Int]] = 6,
-) -> NDArray[Shape["*, 3"], Float]:
+    image: Float[Array, "a b"],
+    min_blob_size: Float | Int | None = 10,
+    max_blob_size: Float | Int | None = 100,
+    blob_step: Float | Int | None = 2,
+    downscale: Float | Int | None = 2,
+    std_threshold: Float | Int | None = 6,
+) -> Float[Array, "a 3"]:
     """
+    Description
+    -----------
     Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
 
-    Args:
-        - `image` (NDArray[Shape["*, *"], Float]):
-            A 2D array representing the input image.
-        - `min_blob_size` (Float | Int, optional):
-            The minimum size of the blobs to be detected.
-            Defaults to 10.
-        - `max_blob_size` (Float | Int, optional):
-            The maximum size of the blobs to be detected.
-            Defaults to 100.
-        - `blob_step` (Float | Int, optional):
-            The step size for iterating over different blob sizes.
-            Defaults to 2.
-        - `downscale` (Float | Int, optional):
-            The factor by which the image is downscaled before blob detection.
-            Defaults to 2.
-        - `std_threshold` (Float | Int, optional):
-            The threshold for blob detection based on standard deviation.
-            Defaults to 6.
+    Parameters
+    ----------
+    - `image` (Float[Array, "a b"]):
+        A 2D array representing the input image.
+    - `min_blob_size` (Float | Int, optional):
+        The minimum size of the blobs to be detected.
+        Defaults to 10.
+    - `max_blob_size` (Float | Int, optional):
+        The maximum size of the blobs to be detected.
+        Defaults to 100.
+    - `blob_step` (Float | Int, optional):
+        The step size for iterating over different blob sizes.
+        Defaults to 2.
+    - `downscale` (Float | Int, optional):
+        The factor by which the image is downscaled before blob detection.
+        Defaults to 2.
+    - `std_threshold` (Float | Int, optional):
+        The threshold for blob detection based on standard deviation.
+        Defaults to 6.
 
-    Returns:
-        - `scaled_coords` (NDArray[Shape["*, 3"], Float]):
-            A 2D array containing the coordinates of the detected blobs. Each row
-            represents the coordinates of a blob, with the first two columns
-            representing the x and y coordinates, and the last column
-            representing the size of the blob.
+    Returns
+    -------
+    - `scaled_coords` (NDArray[Shape["*, 3"], Float]):
+        A 2D array containing the coordinates of the detected blobs. Each row
+        represents the coordinates of a blob, with the first two columns
+        representing the x and y coordinates, and the last column
+        representing the size of the blob.
     """
-    peak_range: NDArray[Shape["*"], Float] = xp.arange(
+    peak_range: Float[Array, "c"] = jnp.arange(
         start=min_blob_size, stop=max_blob_size, step=blob_step
     )
-    scaled_image: NDArray[Shape["*, *"], Float] = xnd.zoom(image, (1 / downscale))
-    if xp.amin(xp.asarray(xp.shape(scaled_image))) < 20:
+    scaled_image: Float[Array, "e f"] = arm_em.fast_resizer(image, (1 / downscale))
+    if jnp.amin(x=jnp.asarray(jnp.shape(scaled_image))) < 20:
         raise ValueError("Image is too small for blob detection")
-    results_3D: NDArray[Shape["*, *, *"], Float] = xp.empty(
+    results_3D: Float[Array, "d e f"] = jnp.zeros(
         shape=(scaled_image.shape[0], scaled_image.shape[1], len(peak_range)),
-        dtype=xp.float64,
+        dtype=jnp.float64,
     )
     for ii in range(len(peak_range)):
         results_3D[:, :, ii] = arm_em.laplacian_gaussian(
