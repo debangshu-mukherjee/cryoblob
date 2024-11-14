@@ -7,9 +7,7 @@ except ImportError:
 
 import pytest
 from arm_em.blob_detection import blob_list
-
 from nptyping import Bool, Float, Int, NDArray, Shape
-
 
 
 class TestBlobList:

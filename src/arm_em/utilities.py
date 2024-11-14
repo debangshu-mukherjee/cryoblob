@@ -4,14 +4,13 @@ from functools import partial
 from importlib.resources import files
 from typing import List, Literal, Tuple, Union
 
+import arm_em
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
-
-import arm_em
 
 number = Union[int, float]
 
@@ -883,7 +882,9 @@ def center_of_mass_3d(
         return jnp.array([center_x, center_y, center_z])
 
     # Vectorize over labels
-    centroids = jax.vmap(compute_centroid)(jnp.arange(1, num_labels + 1))
+    centroids: Float[Array, "n 3"] = jax.vmap(compute_centroid)(
+        jnp.arange(1, num_labels + 1)
+    )
     return centroids
 
 

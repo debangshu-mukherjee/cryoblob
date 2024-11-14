@@ -3,6 +3,7 @@ import glob
 from functools import partial
 from typing import Dict, List, Literal, Tuple, Union
 
+import arm_em
 import jax
 import jax.numpy as jnp
 import mrcfile
@@ -12,14 +13,12 @@ from jax import device_get, device_put, lax, vmap
 from jaxtyping import Array, Float, Int
 from tqdm.auto import tqdm
 
-import arm_em
-
 number = Union[int, float]
 jax.config.update("jax_enable_x64", True)
 
 
 def blob_list(
-    image: Float[Array, "a b"],
+    image: Float[Array, "a b"] | Float[Array, "a b c"],
     min_blob_size: Float | Int | None = 10,
     max_blob_size: Float | Int | None = 100,
     blob_step: Float | Int | None = 2,
@@ -30,11 +29,13 @@ def blob_list(
     Description
     -----------
     Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
+    If input is 3D, sums along the last axis before processing.
 
     Parameters
     ----------
-    - `image` (Float[Array, "a b"]):
-        A 2D array representing the input image.
+    - `image` (Float[Array, "a b"] | Float[Array, "a b c"]):
+        A 2D or 3D array representing the input image.
+        If 3D, will be summed along the last axis.
     - `min_blob_size` (Float | Int, optional):
         The minimum size of the blobs to be detected.
         Defaults to 10.
@@ -58,13 +59,26 @@ def blob_list(
         represents the coordinates of a blob, with the first two columns
         representing the x and y coordinates, and the last column
         representing the size of the blob.
+
+    Notes
+    -----
+    For 3D inputs, the function:
+    1. Sums along the last axis to create a 2D projection
+    2. Processes the 2D projection for blob detection
+    3. Returns coordinates in the 2D projection space
     """
+    # Handle 3D input by summing along last axis
+    if image.ndim == 3:
+        image = jnp.sum(image, axis=-1)
+
     peak_range: Float[Array, "c"] = jnp.arange(
         start=min_blob_size, stop=max_blob_size, step=blob_step
     )
     scaled_image: Float[Array, "e f"] = arm_em.fast_resizer(image, (1 / downscale))
+
     if jnp.amin(x=jnp.asarray(jnp.shape(scaled_image))) < 20:
         raise ValueError("Image is too small for blob detection")
+
     vectorized_log = jax.vmap(
         arm_em.laplacian_gaussian,
         in_axes=(
