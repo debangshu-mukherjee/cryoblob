@@ -1,7 +1,8 @@
 """
-=========================================================
-GPU based data processing of cryo-EM particle images
-=========================================================
+==================================================
+JAX based differntiable data processing of cryo-EM 
+particle images. Runs on both CPUs and GPUs.
+==================================================
 
 .. currentmodule:: arm_em
 

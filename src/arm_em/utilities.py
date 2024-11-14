@@ -9,7 +9,7 @@ import jax.numpy as jnp
 from beartype import beartype as typechecker
 from jax import lax
 from jax.scipy import signal
-from jaxtyping import Array, Float, Integer, Real, jaxtyped
+from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
 
 import arm_em
 
@@ -19,6 +19,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 @jaxtyped(typechecker=typechecker)
+@jax.jit
 def fast_resizer(
     orig_image: Real[Array, "y x"],
     new_sampling: Union[number, Tuple[number, number], Real[Array, "1 2"]],
@@ -145,6 +146,7 @@ def file_params() -> Tuple[str, dict]:
     return (main_directory, folder_structure)
 
 
+@jaxtyped(typechecker=typechecker)
 def laplacian_gaussian(
     image: Real[Array, "y x"],
     standard_deviation: number | None = 3,
@@ -160,8 +162,8 @@ def laplacian_gaussian(
 
     Parameters
     ----------
-    - `image` (cupy.ndarray):
-        An input image represented as a 2D CuPy array.
+    - `image` (Real[Array, "y x"]):
+        An input image represented as a 2D array.
     - `standard_deviation` (int, optional):
         The standard deviation of the Gaussian filter.
         Default is 3.
@@ -182,15 +184,13 @@ def laplacian_gaussian(
         - `filtered` (NDArray[Shape["*, *"], Float]):
             The laplacian of gaussian filtered image.
 
-    Flow:
-    - Convert the input image to a CuPy array and ensure it is of type float64.
-    - If downsampling is applied, zoom the image accordingly.
-    - If histogram stretching is enabled, perform histogram equalization on the sampled image.
-    - Apply Gaussian filtering to the sampled image using the specified standard deviation.
-    - Define the Laplacian filter kernel.
-    - Convolve the Gaussian filtered image with the Laplacian kernel.
-    - If normalization is enabled, scale the filtered image by the standard deviation.
-    - Return the filtered image.
+    Flow
+    ----
+    - If sampling is not 1, the image is resized.
+    - If hist_stretch is True, the image is histogram stretched.
+    - A Laplacian of Gaussian kernel is created.
+    - The image is filtered using the kernel.
+    - If normalized is True, the image is normalized by the standard deviation.
     """
     sampled_image: Float[Array, "y x"]
     if sampling != 1:
@@ -208,6 +208,7 @@ def laplacian_gaussian(
     return filtered
 
 
+@jaxtyped(typechecker=typechecker)
 def preprocessing(
     image_orig: Float[Array, "y x"],
     return_params: bool | None = False,
@@ -283,6 +284,7 @@ def preprocessing(
         return image_proc
 
 
+@jaxtyped(typechecker=typechecker)
 def gaussian_kernel(size: int, sigma: float) -> Float[Array, "size size"]:
     """
     Description
@@ -316,6 +318,7 @@ def gaussian_kernel(size: int, sigma: float) -> Float[Array, "size size"]:
     return normalized_gaussian
 
 
+@jaxtyped(typechecker=typechecker)
 @jax.jit
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
@@ -358,6 +361,7 @@ def apply_gaussian_blur(
     return blurred
 
 
+@jaxtyped(typechecker=typechecker)
 def laplacian_kernel(
     mode: Literal["basic", "diagonal", "gaussian"] = "basic",
     size: int | None = 3,
@@ -438,6 +442,7 @@ def laplacian_kernel(
         )
 
 
+@jaxtyped(typechecker=typechecker)
 def histogram(
     image: Real[Array, "h w"],
     bins: int | None = 256,
@@ -472,6 +477,7 @@ def histogram(
     return hist
 
 
+@jaxtyped(typechecker=typechecker)
 @jax.jit
 def equalize_hist(
     image: Real[Array, "h w"], nbins: int = 256, mask: Real[Array, "h w"] | None = None
@@ -555,6 +561,7 @@ def equalize_hist(
     return equalized
 
 
+@jaxtyped(typechecker=typechecker)
 @jax.jit
 def equalize_adapthist(
     image: Real[Array, "h w"],
@@ -658,6 +665,7 @@ def equalize_adapthist(
     return equalized
 
 
+@jaxtyped(typechecker=typechecker)
 @jax.jit
 def wiener(
     img: Float[Array, "h w"],
@@ -723,3 +731,196 @@ def wiener(
     ) * (img - local_mean)
 
     return filtered
+
+
+@jaxtyped(typechecker=typechecker)
+def find_connected_components(
+    binary_image: Bool[Array, "x y z"], connectivity: int | None = 6
+) -> Tuple[Integer[Array, "x y z"], int]:
+    """
+    Description
+    -----------
+    Pure JAX implementation of 3D connected components labeling.
+    Uses a two-pass algorithm.
+
+    Parameters
+    ----------
+    - `binary_image` (Bool[Array, "x y z"]):
+        Binary image where True/1 indicates foreground
+    - `connectivity` (int, optional):
+        Either 6 (face-connected) or 26 (fully-connected).
+        Default is 6
+
+    Returns
+    -------
+    - `labels` (Int[Array, "x y z"]):
+        Array where each connected component has unique integer label
+    - `num_labels` (int):
+        Number of connected components found
+    """
+    shape = binary_image.shape
+
+    # Initialize labels with sequential numbers for non-zero pixels
+    initial_labels = jnp.where(
+        binary_image > 0, jnp.arange(1, binary_image.size + 1).reshape(shape), 0
+    )
+
+    def get_neighbors(pos, labels):
+        x, y, z = pos
+        neighbors = []
+
+        if connectivity == 6:
+            # 6-connectivity: face neighbors
+            offsets = [
+                (-1, 0, 0),
+                (1, 0, 0),
+                (0, -1, 0),
+                (0, 1, 0),
+                (0, 0, -1),
+                (0, 0, 1),
+            ]
+        else:
+            # 26-connectivity: include diagonal neighbors
+            offsets = [
+                (dx, dy, dz)
+                for dx in [-1, 0, 1]
+                for dy in [-1, 0, 1]
+                for dz in [-1, 0, 1]
+                if not (dx == dy == dz == 0)
+            ]
+
+        for dx, dy, dz in offsets:
+            nx, ny, nz = x + dx, y + dy, z + dz
+            if 0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2]:
+                neighbors.append(labels[nx, ny, nz])
+
+        return jnp.array(neighbors)
+
+    def update_label(old_label, new_label, labels):
+        return jnp.where(labels == old_label, new_label, labels)
+
+    def merge_components(labels):
+        positions = jnp.argwhere(binary_image > 0)
+
+        def scan_fn(labels, pos):
+            neighbors = get_neighbors(pos, labels)
+            valid_neighbors = neighbors[neighbors > 0]
+            if len(valid_neighbors) > 0:
+                min_label = jnp.min(valid_neighbors)
+                current_label = labels[tuple(pos)]
+                if current_label > min_label:
+                    labels = update_label(current_label, min_label, labels)
+            return labels, None
+
+        labels, _ = lax.scan(scan_fn, labels, positions)
+        return labels
+
+    # Iterative merging until convergence
+    def cond_fn(state):
+        prev_labels, curr_labels, _ = state
+        return jnp.any(prev_labels != curr_labels)
+
+    def body_fn(state):
+        _, curr_labels, i = state
+        new_labels = merge_components(curr_labels)
+        return curr_labels, new_labels, i + 1
+
+    # Run until convergence
+    final_labels, _, _ = lax.while_loop(
+        cond_fn, body_fn, (initial_labels, initial_labels, 0)
+    )
+
+    # Relabel components to be sequential
+    unique_labels = jnp.unique(final_labels)
+    num_labels = len(unique_labels) - 1  # subtract 1 for background
+
+    # Create mapping for sequential labels
+    label_map = jnp.zeros(jnp.max(unique_labels) + 1, dtype=jnp.int32)
+    label_map = label_map.at[unique_labels].set(jnp.arange(len(unique_labels)))
+
+    # Apply mapping
+    sequential_labels = label_map[final_labels]
+
+    return sequential_labels, num_labels
+
+
+def center_of_mass_3d(
+    image: Float[Array, "x y z"], labels: Integer[Array, "x y z"], num_labels: int
+) -> Float[Array, "n 3"]:
+    """
+    Description
+    -----------
+    Calculate center of mass for each labeled region in a 3D image.
+
+    Parameters
+    ----------
+    - `image` (Float[Array, "x y z"]):
+        3D image array
+    - `labels` (Int[Array, "x y z"]):
+        Integer array of labels
+    - `num_labels` (int):
+        Number of labels (excluding background)
+
+    Returns
+    -------
+    - `centroids` (Float[Array, "n 3"]):
+        Array of centroid coordinates for each label
+    """
+
+    def compute_centroid(label_idx):
+        mask = labels == label_idx
+        masked_image: Float[Array, "p q r"] = jnp.where(mask, image, 0)
+        total_mass: Float[Array, ""] = jnp.sum(masked_image)
+
+        x_coords: Num[Array, "x 1 1"] = jnp.arange(image.shape[0])[:, None, None]
+        y_coords: Num[Array, "1 y 1"] = jnp.arange(image.shape[1])[None, :, None]
+        z_coords: Num[Array, "1 1 z"] = jnp.arange(image.shape[2])[None, None, :]
+
+        center_x: Float[Array, ""] = jnp.sum(masked_image * x_coords) / total_mass
+        center_y: Float[Array, ""] = jnp.sum(masked_image * y_coords) / total_mass
+        center_z: Float[Array, ""] = jnp.sum(masked_image * z_coords) / total_mass
+
+        return jnp.array([center_x, center_y, center_z])
+
+    # Vectorize over labels
+    centroids = jax.vmap(compute_centroid)(jnp.arange(1, num_labels + 1))
+    return centroids
+
+
+@jaxtyped(typechecker=typechecker)
+@jax.jit
+def find_particle_coords(
+    results_3D: Float[Array, "x y z"],
+    max_filtered: Float[Array, "x y z"],
+    image_thresh: float,
+) -> Float[Array, "n 3"]:
+    """
+    Description
+    -----------
+    Find particle coordinates using connected components and center of mass.
+    Pure JAX implementation.
+
+    Parameters
+    ----------
+    - `results_3D` (Float[Array, "x y z"]):
+        3D array of filter responses
+    - `max_filtered` (Float[Array, "x y z"]):
+        Maximum filtered array
+    - `image_thresh` (float):
+        Threshold for peak detection
+
+    Returns
+    -------
+    - `coords` (Float[Array, "n 3"]):
+        Array of particle coordinates
+    """
+    # Create binary image of peaks
+    binary: Bool[Array, "x y z"] = max_filtered > image_thresh
+
+    # Find connected components
+    labels, num_labels = arm_em.find_connected_components(binary)
+
+    # Calculate center of mass for each component
+    coords = arm_em.center_of_mass_3d(results_3D, labels, num_labels)
+
+    return coords
