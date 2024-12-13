@@ -143,7 +143,6 @@ def estimate_batch_size(sample_file: str, target_memory_gb: float = 4.0) -> int:
     return batch_size
 
 
-@partial(jax.jit, static_argnums=(1,))
 def clear_device_memory():
     """Clear GPU memory between batches."""
     jax.clear_caches()
@@ -229,7 +228,6 @@ def process_single_file(
         return jnp.array([]), file_path
 
 
-@partial(jax.jit, static_argnums=(1, 2))
 def process_batch_of_files(
     file_batch: List[str], preprocessing_kwargs: Dict, blob_downscale: float
 ) -> List[Tuple[Float[Array, "n 3"], str]]:
