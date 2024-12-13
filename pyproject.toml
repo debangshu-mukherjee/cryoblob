@@ -26,6 +26,7 @@ dependencies = [
     "tqdm >= 4.66.0",
     "jax",
     "jaxtyping >= 0.2.33, < 0.3",
+    "beartype",
 ]
 
 [project.urls]
