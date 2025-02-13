@@ -27,6 +27,7 @@ dependencies = [
     "jax",
     "jaxtyping >= 0.2.33, < 0.3",
     "beartype",
+    "pandas>=2.2.3",
 ]
 
 [project.urls]
