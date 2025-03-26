@@ -1,12 +1,7 @@
-import json
-import os
-from functools import partial
-from importlib.resources import files
-
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker
-from beartype.typing import List, Literal, Tuple, TypeAlias, Union
+from beartype.typing import Literal, Tuple, TypeAlias, Union, Optional, Callable
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
@@ -16,12 +11,12 @@ import arm_em
 scalar_float: TypeAlias = Union[float, Float[Array, ""]]
 scalar_int: TypeAlias = Union[int, Integer[Array, ""]]
 scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
+non_jax_number: TypeAlias = Union[int, float]
 
 jax.config.update("jax_enable_x64", True)
 
 
 @jaxtyped(typechecker=typechecker)
-@jax.jit
 def image_resizer(
     orig_image: Union[Real[Array, "y x"], Real[Array, "y x c"]],
     new_sampling: Union[Real[Array, ""], Real[Array, "2"]],
@@ -34,9 +29,9 @@ def image_resizer(
 
     Parameters
     ----------
-    - `orig_image` (Union[Real[Array, "y x"], Real[Array, "y x c"]]):
+    - `orig_image` (Real[Array, "y x"] | Real[Array, "y x c"]):
         The original image to be resized. It should be a 2D JAX array or 3D stack.
-    - `new_sampling` (Union[Real[Array, ""], Real[Array, "2"]]):
+    - `new_sampling` (Real[Array, ""] | Real[Array, "2"]):
         The new sampling rate for resizing the image. It can be a single
         float value or a tuple of two float values representing the sampling
         rates for the x and y axes respectively.
@@ -49,6 +44,7 @@ def image_resizer(
     image: Float[Array, "y x"] = jnp.where(
         jnp.ndim(orig_image) == 3, jnp.sum(orig_image, axis=-1), orig_image
     ).astype(jnp.float32)
+    new_sampling = jnp.abs(new_sampling)
     sampling_array: Float[Array, "2"] = jnp.broadcast_to(
         jnp.atleast_1d(new_sampling), (2,)
     ).astype(jnp.float32)
@@ -95,8 +91,7 @@ def resize_x(
             carry: Tuple[Integer[Array, ""], Float[Array, ""]], nn: Integer[Array, ""]
         ) -> Tuple[Tuple[Integer[Array, ""], Float[Array, ""]], Float[Array, ""]]:
             m: Integer[Array, ""] = carry[0]
-            carry_val: Float[Array, ""] = carry[1]
-
+            
             def while_cond(
                 state: Tuple[Integer[Array, ""], Float[Array, ""], None]
             ) -> Bool[Array, ""]:
@@ -127,325 +122,378 @@ def resize_x(
     resized: Float[Array, "y new_x"] = jax.vmap(resize_column)(x_image)
     return resized
 
-
-def file_params() -> Tuple[str, dict]:
-    """
-    Run this at the beginning to generate the dict
-    This gives both the absolute and relative paths
-    on how the files are organized.
-
-    Returns:
-        - `main_directory` (str):
-            the main directory where the package is located.
-        - `folder_structure` (dict):
-            where the files and data are stored, as read
-            from the organization.json file.
-    """
-    pkg_directory: str = os.path.dirname(__file__)
-    listring: List = pkg_directory.split("/")[1:-2]
-    listring.append("")
-    listring.insert(0, "")
-    main_directory: str = "/".join(listring)
-    folder_structure: dict = json.load(
-        open(files("arm_em.params").joinpath("organization.json"))
-    )
-    return (main_directory, folder_structure)
-
-
 @jaxtyped(typechecker=typechecker)
-def laplacian_gaussian(
-    image: Real[Array, "y x"],
-    standard_deviation: scalar_num | None = 3,
-    hist_stretch: bool | None = True,
-    sampling: scalar_num | None = 1,
-    normalized: bool | None = True,
-) -> Float[Array, "y x"]:
-    """
-    Description
-    -----------
-    Applies Laplacian of Gaussian (LoG) filtering to an
-    input image.
-
-    Parameters
-    ----------
-    - `image` (Real[Array, "y x"]):
-        An input image represented as a 2D array.
-    - `standard_deviation` (int, optional):
-        The standard deviation of the Gaussian filter.
-        Default is 3.
-    - `hist_stretch` (bool, optional):
-        A boolean indicating whether to perform histogram
-        stretching on the image.
-        Default is True.
-    - `sampling` (float, optional):
-        The downsampling factor for the image.
-        Default is 1.
-    - `normalized` (bool, optional):
-        A boolean indicating whether to normalize the filtered
-        image by the standard deviation.
-        Default is True.
-
-    Returns
-    -------
-        - `filtered` (NDArray[Shape["*, *"], Float]):
-            The laplacian of gaussian filtered image.
-
-    Flow
-    ----
-    - If sampling is not 1, the image is resized.
-    - If hist_stretch is True, the image is histogram stretched.
-    - A Laplacian of Gaussian kernel is created.
-    - The image is filtered using the kernel.
-    - If normalized is True, the image is normalized by the standard deviation.
-    """
-    sampled_image: Float[Array, "y x"]
-    if sampling != 1:
-        sampled_image = arm_em.fast_resizer(image, sampling)
-    else:
-        sampled_image = jnp.asarray(image, dtype=jnp.float64)
-    if hist_stretch:
-        sampled_image = arm_em.equalize_hist(sampled_image)
-    log_kernel: Float[Array, "3 3"] = arm_em.laplacian_kernel(
-        mode="gaussian", size=3, sigma=standard_deviation
-    )
-    filtered: Float[Array, "y x"] = signal.convolve2d(image, log_kernel, mode="same")
-    if normalized:
-        filtered = filtered * standard_deviation
-    return filtered
-
-
-@jaxtyped(typechecker=typechecker)
-def preprocessing(
-    image_orig: Float[Array, "y x"],
-    return_params: bool | None = False,
-    exponential: bool | None = True,
-    logarizer: bool | None = False,
-    gblur: int | None = 2,
-    background: int | None = 0,
-    apply_filter: int | None = 0,
-) -> Float[Array, "y x"]:
-    """
-    Description
-    -----------
-    Pre-processing of low SNR images to
-    improve contrast of blobs.
-
-    Parameters
-    ----------
-    - `image_orig` (Float[Array, "y x"]):
-        An input image represented as a 2D JAX array.
-    - `return_params` (bool, optional):
-        A boolean indicating whether to return the processing parameters.
-        Default is False.
-    - `exponential` (bool, optional):
-        A boolean indicating whether to apply an exponential function to the image.
-        Default is True.
-    - `logarizer` (bool, optional):
-        A boolean indicating whether to apply a log function to the image.
-        Default is False.
-    - `gblur` (int, optional):
-        The standard deviation of the Gaussian filter.
-        Default is 2.
-    - `background` (int, optional):
-        The standard deviation of the Gaussian filter for background subtraction.
-        Default is 0.
-    - `apply_filter` (int, optional):
-        If greater than 1, a Wiener filter is applied to the image.
-
-    Returns
-    -------
-    - `image_proc` (Float[Array, "y x"]):
-        The pre-processed image
-    """
-    processing_params: dict = {
-        "exponential": exponential,
-        "logarizer": logarizer,
-        "gblur": gblur,
-        "background": background,
-        "apply_filter": apply_filter,
-    }
-
-    image_proc: Float[Array, "y x"]
-    if jnp.amax(image_orig) == jnp.amin(image_orig):
-        image_proc = jnp.zeros(image_orig, dtype=jnp.float64)
-    else:
-        image_proc = (image_orig - jnp.amin(image_orig)) / (
-            jnp.amax(image_orig) - jnp.amin(image_orig)
-        )
-    if exponential:
-        image_proc = jnp.exp(image_proc)
-    if logarizer:
-        image_proc = jnp.log(image_proc)
-    if gblur > 0:
-        image_proc = arm_em.apply_gaussian_blur(image_proc, sigma=gblur)
-    if background > 0:
-        image_proc = image_proc - arm_em.apply_gaussian_blur(
-            image_proc, sigma=background
-        )
-    if apply_filter > 0:
-        image_proc = arm_em.wiener(image_proc, kernel_size=apply_filter)
-    if return_params:
-        return image_proc, processing_params
-    else:
-        return image_proc
-
-
-@jaxtyped(typechecker=typechecker)
-def gaussian_kernel(size: int, sigma: float) -> Float[Array, "size size"]:
-    """
-    Description
-    -----------
-    Create a 2D Gaussian kernel.
-
-    Parameters
-    ----------
-    - `size` (int):
-        The size of the kernel (will be size x size)
-    - sigma (float):
-        The standard deviation of the Gaussian distribution
-
-    Returns
-    -------
-    - `normalized_gaussian` (Float[Array, "size size"]):
-        A 2D Gaussian kernel normalized to sum to 1
-    """
-    # Create a grid of coordinates
-    x: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
-    y: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
-    X: Float[Array, "size size"]
-    Y: Float[Array, "size size"]
-    X, Y = jnp.meshgrid(x, y)
-
-    # Calculate the 2D gaussian
-    gaussian: Float[Array, "size size"] = jnp.exp(-(X**2 + Y**2) / (2 * sigma**2))
-
-    # Normalize the gaussian
-    normalized_gaussian: Float[Array, "size size"] = gaussian / jnp.sum(gaussian)
-    return normalized_gaussian
-
-
-@jaxtyped(typechecker=typechecker)
-@jax.jit
-def apply_gaussian_blur(
-    image: Real[Array, "y x"],
-    sigma: float | None = 1.0,
-    kernel_size: int | None = 5,
-    mode: Literal["full", "valid", "same"] | None = "same",
-) -> Float[Array, "yp xp"]:
-    """
-    Description
-    -----------
-    Apply Gaussian blur to an image using JAX's scipy signal processing.
-
-    Parameters
-    ----------
-    - `image` (Real[Array, "y x"]):
-        Input image to blur
-    - `sigma` (float, optional):
-        Standard deviation of the Gaussian kernel. Default is 1.0
-    - `kernel_size` (int, optional):
-        Size of the Gaussian kernel. Default is 5
-    - `mode` (str, optional):
-        The type of convolution:
-        - 'full': output is full discrete linear convolution
-        - 'valid': output consists only of elements computed without padding
-        - 'same': output is same size as input, centered
-        Default is 'same'
-
-    Returns
-    -------
-    - `blurred` (Float[Array, "yp xp"]):
-        The blurred image
-    """
-    # Create the Gaussian kernel
-    kernel: Float[Array, "kernel_size kernel_size"] = arm_em.gaussian_kernel(
-        kernel_size, sigma
-    )
-
-    # Apply convolution
-    blurred: Float[Array, "y x"] = signal.convolve2d(image, kernel, mode=mode)
-    return blurred
-
-
-@jaxtyped(typechecker=typechecker)
-def laplacian_kernel(
-    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
-    size: int | None = 3,
-    sigma: float | None = 1.0,
+def gaussian_kernel(
+    size: scalar_int,
+    sigma: scalar_float,
 ) -> Float[Array, "size size"]:
     """
     Description
     -----------
-    Create a Laplacian kernel for edge detection.
+    Create a normalized 2D Gaussian kernel.
 
     Parameters
     ----------
-    - `mode` (str):
-        The type of Laplacian kernel to create:
-        - "basic": Standard 4-connected Laplacian
-        - "diagonal": 8-connected Laplacian including diagonals
-        - "gaussian": Laplacian of Gaussian (LoG)
-    - `size` (int, optional):
-        The size of the kernel (will be size x size).
-        Required for 'gaussian' mode. Default is 3
-    - `sigma` (float, optional):
-        The standard deviation for Gaussian mode.
-        Only used when mode='gaussian'. Default is 1.0
+    - `size` (scalar_int):
+        Kernel size (size x size). Must be odd.
+    - `sigma` (scalar_float):
+        Standard deviation of the Gaussian distribution.
 
     Returns
     -------
     - `kernel` (Float[Array, "size size"]):
-        The Laplacian kernel array
+        Normalized 2D Gaussian kernel.
+    """
+    radius: scalar_int = size // 2
+    coords: Float[Array, "size"] = jnp.arange(-radius, radius + 1)
+    x: Float[Array, "size size"]
+    y: Float[Array, "size size"]
+    x, y = jnp.meshgrid(coords, coords)
+    gaussian: Float[Array, "size size"] = jnp.exp(-(x**2 + y**2) / (2.0 * sigma**2))
+    kernel: Float[Array, "size size"] = gaussian / jnp.sum(gaussian)
+    return kernel
 
+@jaxtyped(typechecker=typechecker)
+def apply_gaussian_blur(
+    image: Real[Array, "y x"],
+    sigma: Optional[scalar_float] = 1.0,
+    kernel_size: Optional[scalar_int] = 5,
+    mode: Literal["full", "valid", "same"] = "same",
+) -> Float[Array, "yp xp"]:
+    """
+    Description
+    -----------
+    Apply Gaussian blur to an image using convolution in JAX.
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "y x"]):
+        Input image.
+    - `sigma` (scalar_float, optional):
+        Standard deviation for Gaussian kernel. Defaults to 1.0.
+    - `kernel_size` (scalar_int, optional):
+        Size of Gaussian kernel. Must be odd. Defaults to 5.
+    - `mode` (Literal["full", "valid", "same"]):
+        Convolution mode. Defaults to "same".
+
+    Returns
+    -------
+    - `blurred` (Float[Array, "yp xp"]):
+        Blurred image.
+    """
+    kernel_size = jnp.abs(kernel_size)
+    kernel_size = (kernel_size // 2) * 2 + 1
+    kernel_size = jnp.maximum(kernel_size, 1)
+    kernel: Float[Array, "kernel_size kernel_size"] = gaussian_kernel(kernel_size, sigma)
+    blurred: Float[Array, "yp xp"] = signal.convolve2d(image, kernel, mode=mode)
+    return blurred
+
+@jaxtyped(typechecker=typechecker)
+def difference_of_gaussians(
+    image: Real[Array, "y x"],
+    sigma1: scalar_num,
+    sigma2: scalar_num,
+    sampling: scalar_num = 1,
+    hist_stretch: bool = True,
+    normalized: bool = True,
+) -> Float[Array, "y x"]:
+    """
+    Description
+    -----------
+    Applies Difference of Gaussians (DoG) filtering to enhance circular blobs.
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "y x"]):
+        Input 2D image.
+    - `sigma1` (scalar_num):
+        Standard deviation of the first Gaussian (smaller).
+    - `sigma2` (scalar_num):
+        Standard deviation of the second Gaussian (larger).
+    - `sampling` (scalar_num, optional):
+        Downsampling factor; 1 means no resizing. Default is 1.
+    - `hist_stretch` (bool, optional):
+        Apply histogram stretching if True. Default is True.
+    - `normalized` (bool, optional):
+        Normalize filtered output by sigma2 if True. Default is True.
+
+    Returns
+    -------
+    - `dog_filtered` (Float[Array, "y x"]):
+        DoG-filtered image.
+        
+    Flow
+    ----
+    - Downsamples image if `sampling` ≠ 1 (JIT-safe way).
+    - Histogram stretch if requested.
+    - Create arithmetic-enforced DoG kernel.
+    - Convolve the image with DoG kernel.
+    - Normalize output if required.
+    """
+    resize_factor: scalar_float = 1.0 / sampling
+    resize_needed: bool = sampling != 1
+    sampled_image: Float[Array, "y x"] = jax.lax.cond(
+        resize_needed,
+        lambda img: arm_em.image_resizer(img, resize_factor),
+        lambda img: jnp.asarray(img, dtype=jnp.float64),
+        image,
+    )
+    sampled_image = jax.lax.cond(
+        hist_stretch,
+        arm_em.equalize_hist,
+        lambda img: img,
+        sampled_image,
+    )
+    size1: scalar_int = jnp.maximum(3, (jnp.round(sigma1 * 6) // 2) * 2 + 1)
+    size2: scalar_int = jnp.maximum(3, (jnp.round(sigma2 * 6) // 2) * 2 + 1)
+    gauss_kernel1: Float[Array, "size1 size1"] = arm_em.gaussian_kernel(size=size1, sigma=sigma1)
+    gauss_kernel2: Float[Array, "size2 size2"] = arm_em.gaussian_kernel(size=size2, sigma=sigma2)
+    blur1: Float[Array, "y x"] = signal.convolve2d(sampled_image, gauss_kernel1, mode="same")
+    blur2: Float[Array, "y x"] = signal.convolve2d(sampled_image, gauss_kernel2, mode="same")
+    dog_filtered: Float[Array, "y x"] = blur1 - blur2
+    dog_filtered = jax.lax.cond(
+        normalized,
+        lambda x: x / sigma2,
+        lambda x: x,
+        dog_filtered,
+    )
+    return dog_filtered
+
+
+@jaxtyped(typechecker=typechecker)
+def laplacian_of_gaussian(
+    image: Real[Array, "y x"],
+    standard_deviation: scalar_num = 3,
+    hist_stretch: bool = True,
+    sampling: scalar_num = 1,
+    normalized: bool = True,
+) -> Float[Array, "y x"]:
+    """
+    Description
+    -----------
+    Applies Laplacian of Gaussian (LoG) filtering to an input image.
+
+    Parameters
+    ----------
+    - `image` (Real[Array, "y x"]):
+        Input 2D image.
+    - `standard_deviation` (scalar_num, optional):
+        Standard deviation of the Gaussian filter. Default is 3.
+    - `hist_stretch` (bool, optional):
+        If True, apply histogram stretching. Default is True.
+    - `sampling` (scalar_num, optional):
+        Downsampling factor; 1 means no resizing. Default is 1.
+    - `normalized` (bool, optional):
+        If True, normalize filtered output by the standard deviation.
+        Default is True.
+
+    Returns
+    -------
+    - `filtered` (Float[Array, "y x"]):
+        LoG-filtered image.
+
+    Flow
+    ----
+    - Downsamples image if `sampling` ≠ 1 (JIT-safe way).
+    - Histogram stretch if requested.
+    - Create arithmetic-enforced LoG kernel.
+    - Convolve the image with LoG kernel.
+    - Normalize output if required.
+    """
+    resize_factor: scalar_float = 1.0 / sampling
+    resize_needed: bool = sampling != 1
+    sampled_image: Float[Array, "y x"] = jax.lax.cond(
+        resize_needed,
+        lambda img: arm_em.image_resizer(img, resize_factor),
+        lambda img: jnp.asarray(img, dtype=jnp.float64),
+        image,
+    )
+    sampled_image = jax.lax.cond(
+        hist_stretch,
+        arm_em.equalize_hist,
+        lambda img: img,
+        sampled_image,
+    )
+    kernel_size: scalar_int = jnp.maximum(3, (jnp.round(standard_deviation * 6) // 2) * 2 + 1)
+    log_kernel: Float[Array, "kernel_size kernel_size"] = arm_em.laplacian_kernel(
+        mode="gaussian",
+        size=kernel_size,
+        sigma=standard_deviation
+    )
+    filtered: Float[Array, "y x"] = signal.convolve2d(sampled_image, log_kernel, mode="same")
+    filtered = jax.lax.cond(
+        normalized,
+        lambda x: x / standard_deviation,
+        lambda x: x,
+        filtered,
+    )
+    return filtered
+
+@jaxtyped(typechecker=typechecker)
+def laplacian_kernel(
+    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
+    size: scalar_int = 3,
+    sigma: scalar_float = 1.0,
+) -> Float[Array, "size size"]:
+    """
+    Description
+    -----------
+    Create a Laplacian kernel for edge detection in a JAX-compatible manner.
+
+    Parameters
+    ----------
+    - `mode` (Literal):
+        The type of Laplacian kernel to create:
+        - "basic": Standard 4-connected Laplacian (fixed size=3)
+        - "diagonal": 8-connected Laplacian (fixed size=3)
+        - "gaussian": Laplacian of Gaussian (LoG), size and sigma are used.
+    - `size` (scalar_int):
+        Kernel size, enforced positive and odd for 'gaussian' mode.
+        Default is 3.
+    - `sigma` (scalar_float):
+        Gaussian standard deviation for LoG kernel. Default is 1.0.
+
+    Returns
+    -------
+    - `kernel` (Float[Array, "size size"]):
+        Laplacian kernel.
+    """
+
+    def basic_kernel(_: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
+        return jnp.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32)
+
+    def diagonal_kernel(_: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
+        return jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
+
+    def gaussian_kernel(params: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
+        kernel_size, kernel_sigma = params
+        kernel_size = jnp.maximum(3, (kernel_size // 2) * 2 + 1)
+        radius = kernel_size // 2
+
+        coords = jnp.arange(-radius, radius + 1)
+        x, y = jnp.meshgrid(coords, coords)
+
+        r2 = x ** 2 + y ** 2
+        gaussian = jnp.exp(-r2 / (2 * kernel_sigma**2))
+
+        kernel = (
+            -1.0
+            / (jnp.pi * kernel_sigma**4)
+            * (1 - r2 / (2 * kernel_sigma**2))
+            * gaussian
+        )
+        return kernel
+
+    kernel = jax.lax.switch(
+        (mode == "basic") * 0 + (mode == "diagonal") * 1 + (mode == "gaussian") * 2,
+        [basic_kernel, diagonal_kernel, gaussian_kernel],
+        (size, sigma),
+    )
+
+    return kernel
+
+def exponential_kernel(
+    arr: Float[Array, "H W"], 
+    k: scalar_float
+) -> Float[Array, "H W"]:
+    """
+    Description
+    -----------
+    Create an exponential kernel for image processing.
+    
+    Parameters
+    ----------
+    - `arr` (Float[Array, "H W"]):
+        Input array
+    - `k` (scalar_float):
+        Exponential decay constant
+        
+    Returns
+    -------
+    - `kernel` (Float[Array, "H W"]):
+        Exponential kernel
+    """
+    kernel: Float[Array, "H W"] = jnp.exp(-(arr / k)**2)
+    return kernel
+
+def perona_malik(
+    image: Float[Array, "H W"],
+    num_iter: scalar_int,
+    kappa: scalar_float,
+    gamma: Optional[scalar_float] = 0.1,
+    conduction_fn: Optional[Callable] = arm_em.exponential_kernel,
+) -> Float[Array, "H W"]:
+    """
+    Perform edge-preserving denoising using the Perona-Malik anisotropic diffusion.
+
+    Parameters
+    ------------
+    - `image` (Float[Array, "H W"]):
+        Input noisy image.
+    - `num_iter` (scalar_int):
+        Number of diffusion iterations.
+    - `kappa` (scalar_float):
+        Conductance coefficient controlling sensitivity to edges.
+    - `gamma` (scalar_float, optional):
+        Diffusion rate (0 < gamma <= 0.25 for stability), default is 0.1.
+    - `conduction_fn` (Callable, optional):
+        Conductivity function, defaults to exponential.
+
+    Returns
+    --------
+    - `denoised_image` (Float[Array, "H W"]):
+        Edge-preserved denoised image.
+        
     Notes
     -----
-    The kernels are:
-    - Basic: [[ 0,  1,  0],
-             [ 1, -4,  1],
-             [ 0,  1,  0]]
-
-    - Diagonal: [[ 1,  1,  1],
-                [ 1, -8,  1],
-                [ 1,  1,  1]]
-
-    - Gaussian: Laplacian of Gaussian with specified size/sigma
+    The Perona-Malik equation is given by:
+    u_t = gamma * div(c * grad(u)) + u
+    where:
+    - u is the input image
+    - t is time
+    - gamma is the diffusion rate
+    - c is the conductivity function
+    - grad is the gradient operator
+    - div is the divergence operator
+    
+    The conductivity function c is typically an exponential function:
+    c(delta) = exp(-delta^2 / kappa^2)
+    where delta is the difference between neighboring pixels.
+    
+    Perona, Pietro, Takahiro Shiota, and Jitendra Malik. "Anisotropic diffusion." 
+    Geometry-driven diffusion in computer vision (1994): 73-92.
     """
-    if mode == "basic":
-        kernel: Float[Array, "3 3"] = jnp.array(
-            [[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32
-        )
-        return kernel
 
-    elif mode == "diagonal":
-        kernel: Float[Array, "3 3"] = jnp.array(
-            [[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32
-        )
-        return kernel
+    def diffusion_step(u: Float[Array, "H W"], _: None) -> tuple[Float[Array, "H W"], None]:
+        u_north: Float[Array, "H W"] = jnp.roll(u, -1, axis=0)
+        u_south: Float[Array, "H W"] = jnp.roll(u, 1, axis=0)
+        u_east: Float[Array, "H W"] = jnp.roll(u, -1, axis=1)
+        u_west: Float[Array, "H W"] = jnp.roll(u, 1, axis=1)
 
-    elif mode == "gaussian":
-        # Create coordinate grid
-        x: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
-        y: Float[Array, "size"] = jnp.arange(-(size // 2), size // 2 + 1)
-        X: Float[Array, "size size"]
-        Y: Float[Array, "size size"]
-        X, Y = jnp.meshgrid(x, y)
+        delta_north: Float[Array, "H W"] = u_north - u
+        delta_south: Float[Array, "H W"] = u_south - u
+        delta_east: Float[Array, "H W"] = u_east - u
+        delta_west: Float[Array, "H W"] = u_west - u
 
-        # Calculate squared radius
-        R2: Float[Array, "size size"] = X**2 + Y**2
+        c_north: Float[Array, "H W"] = conduction_fn(jnp.abs(delta_north), kappa)
+        c_south: Float[Array, "H W"] = conduction_fn(jnp.abs(delta_south), kappa)
+        c_east: Float[Array, "H W"] = conduction_fn(jnp.abs(delta_east), kappa)
+        c_west: Float[Array, "H W"] = conduction_fn(jnp.abs(delta_west), kappa)
 
-        # Calculate Laplacian of Gaussian
-        # LoG(x,y) = -1/(pi*sigma^4) * [1 - (x^2 + y^2)/(2*sigma^2)] * exp(-(x^2 + y^2)/(2*sigma^2))
-        gaussian: Float[Array, "size size"] = jnp.exp(-R2 / (2 * sigma**2))
-        kernel: Float[Array, "size size"] = (
-            -1.0 / (jnp.pi * sigma**4) * (1 - R2 / (2 * sigma**2)) * gaussian
+        diff_update: Float[Array, "H W"] = gamma * (
+            c_north * delta_north +
+            c_south * delta_south +
+            c_east * delta_east +
+            c_west * delta_west
         )
 
-        return kernel
+        u_next: Float[Array, "H W"] = u + diff_update
+        return u_next, None
 
-    else:
-        raise ValueError(
-            f"Invalid mode '{mode}'. Must be one of: 'basic', 'diagonal', 'gaussian'"
-        )
+    denoised_image: Float[Array, "H W"]
+    denoised_image, _ = lax.scan(diffusion_step, image, None, length=num_iter)
+
+    return denoised_image
 
 
 @jaxtyped(typechecker=typechecker)
@@ -484,7 +532,6 @@ def histogram(
 
 
 @jaxtyped(typechecker=typechecker)
-@jax.jit
 def equalize_hist(
     image: Real[Array, "h w"], nbins: int = 256, mask: Real[Array, "h w"] | None = None
 ) -> Float[Array, "h w"]:
@@ -568,7 +615,6 @@ def equalize_hist(
 
 
 @jaxtyped(typechecker=typechecker)
-@jax.jit
 def equalize_adapthist(
     image: Real[Array, "h w"],
     kernel_size: int = 8,
@@ -672,7 +718,6 @@ def equalize_adapthist(
 
 
 @jaxtyped(typechecker=typechecker)
-@jax.jit
 def wiener(
     img: Float[Array, "h w"],
     kernel_size: Union[int, Tuple[int, int]] | None = 3,
@@ -896,7 +941,6 @@ def center_of_mass_3d(
 
 
 @jaxtyped(typechecker=typechecker)
-@jax.jit
 def find_particle_coords(
     results_3D: Float[Array, "x y z"],
     max_filtered: Float[Array, "x y z"],

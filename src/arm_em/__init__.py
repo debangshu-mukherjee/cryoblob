@@ -11,5 +11,5 @@ for the cryo-EM particle images.
 """
 
 from .blob_detection import *
-from .utilities import *
-from file_ops import *
+from .image_utils import *
+from .file_ops import *
