@@ -2,37 +2,41 @@ import json
 import os
 from functools import partial
 from importlib.resources import files
-from typing import List, Literal, Tuple, Union
 
-import arm_em
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker
+from beartype.typing import List, Literal, Tuple, TypeAlias, Union
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
 
-number = Union[int, float]
+import arm_em
+
+scalar_float: TypeAlias = Union[float, Float[Array, ""]]
+scalar_int: TypeAlias = Union[int, Integer[Array, ""]]
+scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
 
 jax.config.update("jax_enable_x64", True)
 
 
 @jaxtyped(typechecker=typechecker)
 @jax.jit
-def fast_resizer(
-    orig_image: Real[Array, "y x"],
-    new_sampling: Union[number, Tuple[number, number], Real[Array, "1 2"]],
+def image_resizer(
+    orig_image: Union[Real[Array, "y x"], Real[Array, "y x c"]],
+    new_sampling: Union[Real[Array, ""], Real[Array, "2"]],
 ) -> Float[Array, "a b"]:
     """
     Description
     -----------
     Resize an image using a fast resizing algorithm implemented in JAX.
+    If a 3D stack is provided, the function will sum along the last dimension.
 
     Parameters
     ----------
-    - `orig_image` (Real[Array, "y x"]):
-        The original image to be resized. It should be a 2D JAX array.
-    - `new_sampling` (Union[number, Tuple[number, number], Real[Array, "1 2"]]):
+    - `orig_image` (Union[Real[Array, "y x"], Real[Array, "y x c"]]):
+        The original image to be resized. It should be a 2D JAX array or 3D stack.
+    - `new_sampling` (Union[Real[Array, ""], Real[Array, "2"]]):
         The new sampling rate for resizing the image. It can be a single
         float value or a tuple of two float values representing the sampling
         rates for the x and y axes respectively.
@@ -42,83 +46,86 @@ def fast_resizer(
     - `resampled_image` (Float[Array, "a b"]):
         The resized image.
     """
+    image: Float[Array, "y x"] = jnp.where(
+        jnp.ndim(orig_image) == 3, jnp.sum(orig_image, axis=-1), orig_image
+    ).astype(jnp.float32)
+    sampling_array: Float[Array, "2"] = jnp.broadcast_to(
+        jnp.atleast_1d(new_sampling), (2,)
+    ).astype(jnp.float32)
+    in_y, in_x = image.shape
+    new_y_len: scalar_int = jnp.round(in_y / sampling_array[0]).astype(jnp.int32)
+    new_x_len: scalar_int = jnp.round(in_x / sampling_array[1]).astype(jnp.int32)
+    resized_x: Float[Array, "y new_x"] = arm_em.resize_x(image, new_x_len)
+    swapped: Float[Array, "new_x y"] = jnp.swapaxes(resized_x, 0, 1)
+    resized_xy: Float[Array, "new_x new_y"] = arm_em.resize_x(swapped, new_y_len)
+    resampled_image: Float[Array, "new_y new_x"] = jnp.swapaxes(resized_xy, 0, 1)
+    return resampled_image
 
-    def resize_y(y_image: Real[Array, "y x"], new_y_len: int) -> Real[Array, "y b"]:
+
+@jaxtyped(typechecker=typechecker)
+def resize_x(
+    x_image: Num[Array, "y x"], new_x_len: scalar_int
+) -> Float[Array, "y new_x"]:
+    """
+    Description
+    -----------
+    Resize image along y-axis by independently resampling each column.
+    Uses `lax.scan` over the y-dimension, then `vmap` over x-dimension.
+
+    Parameters
+    ----------
+    - `x_image` (Num[Array, "y x"]):
+        Image to resize (y by x)
+    - `new_x_len` (scalar_int):
+        Target number of columns
+
+    Returns
+    -------
+    - `resized` (Float[Array, "y new_x"]):
+        Resized image (new_y by x)
+    """
+    orig_x_len: int = x_image.shape[1]
+
+    def resize_column(col: Float[Array, "x"]) -> Float[Array, "new_x"]:
         """
-        Resize the image along the y-axis.
-
-        Args:
-            y_image (ArrayLike):
-                The image to be resized along the y-axis.
-            new_y_len (int):
-                The new length of the y-axis.
-
-        Returns:
-            ArrayLike:
-                The resized image along the y-axis.
+        Resize a single 1D column using cumulative area-based resampling.
         """
-        orig_y_len = y_image.shape[0]
 
-        def scan_body(carry, nn):
-            m, carry_array = carry
+        def scan_body(
+            carry: Tuple[Integer[Array, ""], Float[Array, ""]], nn: Integer[Array, ""]
+        ) -> Tuple[Tuple[Integer[Array, ""], Float[Array, ""]], Float[Array, ""]]:
+            m: Integer[Array, ""] = carry[0]
+            carry_val: Float[Array, ""] = carry[1]
 
-            def while_cond(state):
-                m, _, _ = state
-                return ((m * new_y_len) - (nn * orig_y_len)) < orig_y_len
+            def while_cond(
+                state: Tuple[Integer[Array, ""], Float[Array, ""], None]
+            ) -> Bool[Array, ""]:
+                m_state: Integer[Array, ""] = state[0]
+                return ((m_state * new_x_len) - (nn * orig_x_len)) < orig_x_len
 
-            def while_body(state):
-                m, data_sum, _ = state
-                return (m + 1, data_sum + y_image[m, :], None)
+            def while_body(
+                state: Tuple[Integer[Array, ""], Float[Array, ""], None]
+            ) -> Tuple[Integer[Array, ""], Float[Array, ""], None]:
+                m_state, data_sum, _ = state
+                new_sum = data_sum + col[m_state]
+                return (m_state + 1, new_sum, None)
 
-            # Initialize data_sum with carry_array
-            init_state = (m, jnp.copy(carry_array), None)
-
-            # Run the while loop using lax.while_loop
+            init_state = (m, jnp.array(0.0, dtype=col.dtype), None)
             final_m, data_sum, _ = lax.while_loop(while_cond, while_body, init_state)
 
-            # Calculate new carry array
-            new_carry_array = (final_m - (nn + 1) * orig_y_len / new_y_len) * y_image[
-                final_m - 1, :
-            ]
+            fraction: Float[Array, ""] = final_m - (nn + 1) * orig_x_len / new_x_len
+            last_contribution: Float[Array, ""] = fraction * col[final_m - 1]
+            adjusted_sum: Float[Array, ""] = data_sum - last_contribution
+            result: Float[Array, ""] = (adjusted_sum * new_x_len) / orig_x_len
 
-            # Subtract carry array from data sum
-            data_sum = data_sum - new_carry_array
+            return (final_m, last_contribution), result
 
-            # Calculate final result for this row
-            result = (data_sum * new_y_len) / orig_y_len
+        init_carry = (jnp.array(0), jnp.array(0.0, dtype=col.dtype))
+        _, resized_col = lax.scan(scan_body, init_carry, jnp.arange(new_x_len))
+        return resized_col
 
-            return (final_m, new_carry_array), result
-
-        # Initialize carry state
-        init_carry = (0, jnp.zeros(y_image.shape[1], dtype=y_image.dtype))
-
-        # Use scan to iterate over rows
-        _, results = lax.scan(scan_body, init_carry, jnp.arange(new_y_len))
-
-        return results
-
-    # Convert new_sampling to JAX array
-    if not hasattr(new_sampling, "__len__"):
-        new_sampling = jnp.array([new_sampling, new_sampling], dtype=jnp.float32)
-    else:
-        new_sampling = jnp.asarray(new_sampling, dtype=jnp.float32)
-
-    # Convert image to float
-    float_image = jnp.asarray(orig_image, dtype=jnp.float32)
-
-    # Resize in y direction
-    resampled_in_y = resize_y(
-        float_image, int(jnp.round(float_image.shape[0] / new_sampling[0]))
-    )
-
-    # Resize in x direction by transposing, resizing, and transposing back
-    swapped_image = jnp.swapaxes(resampled_in_y, 0, 1)
-    resampled_swapped = resize_y(
-        swapped_image, int(jnp.round(swapped_image.shape[0] / new_sampling[1]))
-    )
-    resampled_image = jnp.swapaxes(resampled_swapped, 0, 1)
-
-    return resampled_image
+    resized: Float[Array, "y new_x"] = jax.vmap(resize_column)(x_image)
+    return resized
 
 
 def file_params() -> Tuple[str, dict]:
@@ -148,9 +155,9 @@ def file_params() -> Tuple[str, dict]:
 @jaxtyped(typechecker=typechecker)
 def laplacian_gaussian(
     image: Real[Array, "y x"],
-    standard_deviation: number | None = 3,
+    standard_deviation: scalar_num | None = 3,
     hist_stretch: bool | None = True,
-    sampling: number | None = 1,
+    sampling: scalar_num | None = 1,
     normalized: bool | None = True,
 ) -> Float[Array, "y x"]:
     """
@@ -752,7 +759,7 @@ def find_connected_components(
 
     Returns
     -------
-    - `labels` (Int[Array, "x y z"]):
+    - `labels` (Integer[Array, "x y z"]):
         Array where each connected component has unique integer label
     - `num_labels` (int):
         Number of connected components found
@@ -855,7 +862,7 @@ def center_of_mass_3d(
     ----------
     - `image` (Float[Array, "x y z"]):
         3D image array
-    - `labels` (Int[Array, "x y z"]):
+    - `labels` (Integer[Array, "x y z"]):
         Integer array of labels
     - `num_labels` (int):
         Number of labels (excluding background)
