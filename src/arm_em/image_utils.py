@@ -782,12 +782,10 @@ def wiener(
         lambda k: jnp.asarray(k),
         kernel_size,
     )
-
     kernel_area: scalar_float = kernel_size_arr[0] * kernel_size_arr[1]
     kernel: Float[Array, "ksize_h ksize_w"] = (
         jnp.ones(kernel_size_arr, dtype=jnp.float64) / kernel_area
     )
-
     local_mean: Float[Array, "h w"] = signal.convolve2d(img, kernel, mode="same")
     local_var: Float[Array, "h w"] = signal.convolve2d(
         jnp.square(img), kernel, mode="same"
