@@ -12,6 +12,7 @@ scalar_int: TypeAlias = Union[int, Int[Array, ""]]
 scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
 jax.config.update("jax_enable_x64", True)
 
+
 @jaxtyped(typechecker=typechecker)
 def preprocessing(
     image_orig: Float[Array, "y x"],

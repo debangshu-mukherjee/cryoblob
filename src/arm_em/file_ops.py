@@ -1,12 +1,13 @@
+import glob
+import json
+import os
+from importlib.resources import files
+
 import jax
 import jax.numpy as jnp
 import mrcfile
-import os
-import json
 import numpy as np
 import pandas as pd
-import glob
-from importlib.resources import files
 from beartype.typing import (Dict, List, Literal, Optional, Tuple, TypeAlias,
                              Union)
 from jax import device_get, device_put, lax, vmap
@@ -19,6 +20,7 @@ scalar_float: TypeAlias = Union[float, Float[Array, ""]]
 scalar_int: TypeAlias = Union[int, Int[Array, ""]]
 scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
 jax.config.update("jax_enable_x64", True)
+
 
 def file_params() -> Tuple[str, dict]:
     """
@@ -46,6 +48,7 @@ def file_params() -> Tuple[str, dict]:
     )
     return (main_directory, folder_structure)
 
+
 def estimate_batch_size(sample_file: str, target_memory_gb: float = 4.0) -> int:
     """
     Estimate optimal batch size based on available memory.
@@ -68,6 +71,7 @@ def estimate_batch_size(sample_file: str, target_memory_gb: float = 4.0) -> int:
     max_memory = target_memory_gb * 1024**3
     batch_size = max(1, int(max_memory / memory_per_file))
     return batch_size
+
 
 def process_single_file(
     file_path: str,

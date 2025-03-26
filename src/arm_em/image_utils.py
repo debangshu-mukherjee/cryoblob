@@ -1,7 +1,8 @@
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker
-from beartype.typing import Literal, Tuple, TypeAlias, Union, Optional, Callable
+from beartype.typing import (Callable, Literal, Optional, Tuple, TypeAlias,
+                             Union)
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
@@ -91,7 +92,7 @@ def resize_x(
             carry: Tuple[Integer[Array, ""], Float[Array, ""]], nn: Integer[Array, ""]
         ) -> Tuple[Tuple[Integer[Array, ""], Float[Array, ""]], Float[Array, ""]]:
             m: Integer[Array, ""] = carry[0]
-            
+
             def while_cond(
                 state: Tuple[Integer[Array, ""], Float[Array, ""], None]
             ) -> Bool[Array, ""]:
@@ -121,6 +122,7 @@ def resize_x(
 
     resized: Float[Array, "y new_x"] = jax.vmap(resize_column)(x_image)
     return resized
+
 
 @jaxtyped(typechecker=typechecker)
 def gaussian_kernel(
@@ -153,6 +155,7 @@ def gaussian_kernel(
     kernel: Float[Array, "size size"] = gaussian / jnp.sum(gaussian)
     return kernel
 
+
 @jaxtyped(typechecker=typechecker)
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
@@ -184,9 +187,12 @@ def apply_gaussian_blur(
     kernel_size = jnp.abs(kernel_size)
     kernel_size = (kernel_size // 2) * 2 + 1
     kernel_size = jnp.maximum(kernel_size, 1)
-    kernel: Float[Array, "kernel_size kernel_size"] = gaussian_kernel(kernel_size, sigma)
+    kernel: Float[Array, "kernel_size kernel_size"] = gaussian_kernel(
+        kernel_size, sigma
+    )
     blurred: Float[Array, "yp xp"] = signal.convolve2d(image, kernel, mode=mode)
     return blurred
+
 
 @jaxtyped(typechecker=typechecker)
 def difference_of_gaussians(
@@ -221,7 +227,7 @@ def difference_of_gaussians(
     -------
     - `dog_filtered` (Float[Array, "y x"]):
         DoG-filtered image.
-        
+
     Flow
     ----
     - Downsamples image if `sampling` ≠ 1 (JIT-safe way).
@@ -246,10 +252,18 @@ def difference_of_gaussians(
     )
     size1: scalar_int = jnp.maximum(3, (jnp.round(sigma1 * 6) // 2) * 2 + 1)
     size2: scalar_int = jnp.maximum(3, (jnp.round(sigma2 * 6) // 2) * 2 + 1)
-    gauss_kernel1: Float[Array, "size1 size1"] = arm_em.gaussian_kernel(size=size1, sigma=sigma1)
-    gauss_kernel2: Float[Array, "size2 size2"] = arm_em.gaussian_kernel(size=size2, sigma=sigma2)
-    blur1: Float[Array, "y x"] = signal.convolve2d(sampled_image, gauss_kernel1, mode="same")
-    blur2: Float[Array, "y x"] = signal.convolve2d(sampled_image, gauss_kernel2, mode="same")
+    gauss_kernel1: Float[Array, "size1 size1"] = arm_em.gaussian_kernel(
+        size=size1, sigma=sigma1
+    )
+    gauss_kernel2: Float[Array, "size2 size2"] = arm_em.gaussian_kernel(
+        size=size2, sigma=sigma2
+    )
+    blur1: Float[Array, "y x"] = signal.convolve2d(
+        sampled_image, gauss_kernel1, mode="same"
+    )
+    blur2: Float[Array, "y x"] = signal.convolve2d(
+        sampled_image, gauss_kernel2, mode="same"
+    )
     dog_filtered: Float[Array, "y x"] = blur1 - blur2
     dog_filtered = jax.lax.cond(
         normalized,
@@ -314,13 +328,15 @@ def laplacian_of_gaussian(
         lambda img: img,
         sampled_image,
     )
-    kernel_size: scalar_int = jnp.maximum(3, (jnp.round(standard_deviation * 6) // 2) * 2 + 1)
-    log_kernel: Float[Array, "kernel_size kernel_size"] = arm_em.laplacian_kernel(
-        mode="gaussian",
-        size=kernel_size,
-        sigma=standard_deviation
+    kernel_size: scalar_int = jnp.maximum(
+        3, (jnp.round(standard_deviation * 6) // 2) * 2 + 1
     )
-    filtered: Float[Array, "y x"] = signal.convolve2d(sampled_image, log_kernel, mode="same")
+    log_kernel: Float[Array, "kernel_size kernel_size"] = arm_em.laplacian_kernel(
+        mode="gaussian", size=kernel_size, sigma=standard_deviation
+    )
+    filtered: Float[Array, "y x"] = signal.convolve2d(
+        sampled_image, log_kernel, mode="same"
+    )
     filtered = jax.lax.cond(
         normalized,
         lambda x: x / standard_deviation,
@@ -328,6 +344,7 @@ def laplacian_of_gaussian(
         filtered,
     )
     return filtered
+
 
 @jaxtyped(typechecker=typechecker)
 def laplacian_kernel(
@@ -362,10 +379,14 @@ def laplacian_kernel(
     def basic_kernel(_: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
         return jnp.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32)
 
-    def diagonal_kernel(_: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
+    def diagonal_kernel(
+        _: tuple[scalar_int, scalar_float]
+    ) -> Float[Array, "size size"]:
         return jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
 
-    def gaussian_kernel(params: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
+    def gaussian_kernel(
+        params: tuple[scalar_int, scalar_float]
+    ) -> Float[Array, "size size"]:
         kernel_size, kernel_sigma = params
         kernel_size = jnp.maximum(3, (kernel_size // 2) * 2 + 1)
         radius = kernel_size // 2
@@ -373,7 +394,7 @@ def laplacian_kernel(
         coords = jnp.arange(-radius, radius + 1)
         x, y = jnp.meshgrid(coords, coords)
 
-        r2 = x ** 2 + y ** 2
+        r2 = x**2 + y**2
         gaussian = jnp.exp(-r2 / (2 * kernel_sigma**2))
 
         kernel = (
@@ -392,29 +413,30 @@ def laplacian_kernel(
 
     return kernel
 
+
 def exponential_kernel(
-    arr: Float[Array, "H W"], 
-    k: scalar_float
+    arr: Float[Array, "H W"], k: scalar_float
 ) -> Float[Array, "H W"]:
     """
     Description
     -----------
     Create an exponential kernel for image processing.
-    
+
     Parameters
     ----------
     - `arr` (Float[Array, "H W"]):
         Input array
     - `k` (scalar_float):
         Exponential decay constant
-        
+
     Returns
     -------
     - `kernel` (Float[Array, "H W"]):
         Exponential kernel
     """
-    kernel: Float[Array, "H W"] = jnp.exp(-(arr / k)**2)
+    kernel: Float[Array, "H W"] = jnp.exp(-((arr / k) ** 2))
     return kernel
+
 
 def perona_malik(
     image: Float[Array, "H W"],
@@ -443,7 +465,7 @@ def perona_malik(
     --------
     - `denoised_image` (Float[Array, "H W"]):
         Edge-preserved denoised image.
-        
+
     Notes
     -----
     The Perona-Malik equation is given by:
@@ -455,16 +477,18 @@ def perona_malik(
     - c is the conductivity function
     - grad is the gradient operator
     - div is the divergence operator
-    
+
     The conductivity function c is typically an exponential function:
     c(delta) = exp(-delta^2 / kappa^2)
     where delta is the difference between neighboring pixels.
-    
-    Perona, Pietro, Takahiro Shiota, and Jitendra Malik. "Anisotropic diffusion." 
+
+    Perona, Pietro, Takahiro Shiota, and Jitendra Malik. "Anisotropic diffusion."
     Geometry-driven diffusion in computer vision (1994): 73-92.
     """
 
-    def diffusion_step(u: Float[Array, "H W"], _: None) -> tuple[Float[Array, "H W"], None]:
+    def diffusion_step(
+        u: Float[Array, "H W"], _: None
+    ) -> tuple[Float[Array, "H W"], None]:
         u_north: Float[Array, "H W"] = jnp.roll(u, -1, axis=0)
         u_south: Float[Array, "H W"] = jnp.roll(u, 1, axis=0)
         u_east: Float[Array, "H W"] = jnp.roll(u, -1, axis=1)
@@ -481,10 +505,10 @@ def perona_malik(
         c_west: Float[Array, "H W"] = conduction_fn(jnp.abs(delta_west), kappa)
 
         diff_update: Float[Array, "H W"] = gamma * (
-            c_north * delta_north +
-            c_south * delta_south +
-            c_east * delta_east +
-            c_west * delta_west
+            c_north * delta_north
+            + c_south * delta_south
+            + c_east * delta_east
+            + c_west * delta_west
         )
 
         u_next: Float[Array, "H W"] = u + diff_update
@@ -717,11 +741,10 @@ def equalize_adapthist(
     return equalized
 
 
-@jaxtyped(typechecker=typechecker)
 def wiener(
     img: Float[Array, "h w"],
-    kernel_size: Union[int, Tuple[int, int]] | None = 3,
-    noise: float | None = None,
+    kernel_size: Union[int, Tuple[int, int]] = 3,
+    noise: Optional[scalar_float] = None,
 ) -> Float[Array, "h w"]:
     """
     Description
@@ -737,7 +760,7 @@ def wiener(
         The size of the sliding window for local statistics.
         If tuple, represents (height, width).
         Default is 3
-    - `noise` (float, optional):
+    - `noise` (scalar_float, optional):
         The noise power. If None, uses the average of the
         local variance.
         Default is None
@@ -752,36 +775,31 @@ def wiener(
     The Wiener filter is optimal in terms of the mean square error.
     It estimates the local mean and variance around each pixel.
     """
-    # Handle kernel size input
-    if isinstance(kernel_size, int):
-        kernel_size: Integer[Array, "2"] = jnp.asarray((kernel_size, kernel_size))
 
-    # Create uniform kernel for local means
-    kernel: Float[Array, "ksize ksize"] = jnp.ones(
-        shape=kernel_size, dtype=jnp.float64
-    ) / (kernel_size[0] * kernel_size[1])
+    kernel_size_arr: Integer[Array, "2"] = lax.cond(
+        isinstance(kernel_size, int),
+        lambda k: jnp.asarray([k, k]),
+        lambda k: jnp.asarray(k),
+        kernel_size,
+    )
 
-    # Calculate local mean using convolution
+    kernel_area: scalar_float = kernel_size_arr[0] * kernel_size_arr[1]
+    kernel: Float[Array, "ksize_h ksize_w"] = (
+        jnp.ones(kernel_size_arr, dtype=jnp.float64) / kernel_area
+    )
+
     local_mean: Float[Array, "h w"] = signal.convolve2d(img, kernel, mode="same")
-
-    # Calculate local variance using convolution
     local_var: Float[Array, "h w"] = signal.convolve2d(
         jnp.square(img), kernel, mode="same"
     ) - jnp.square(local_mean)
-
-    # Ensure variance is positive
     local_var = jnp.maximum(local_var, 0)
-
-    if noise is None:
-        # Estimate noise as the average of the local variances
-        noise = jnp.mean(local_var)
-
-    # Apply Wiener filter
-    filtered: Float[Array, "h w"] = local_mean + (
-        (local_var - noise) / jnp.maximum(local_var, noise)
+    noise_estimate: float = lax.cond(
+        noise is None, lambda v: jnp.mean(v), lambda _: noise, local_var
+    )
+    result: Float[Array, "h w"] = local_mean + (
+        (local_var - noise_estimate) / jnp.maximum(local_var, noise_estimate)
     ) * (img - local_mean)
-
-    return filtered
+    return result
 
 
 @jaxtyped(typechecker=typechecker)
