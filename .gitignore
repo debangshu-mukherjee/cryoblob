@@ -2,11 +2,11 @@
 __pycache__/
 Notebooks/__pycache__/
 /src/__pycache__/
-/src/arm_em/__pycache__/
+/src/cryoblob/__pycache__/
 *.py[cod]
 /.vscode
 /src/.vscode
-/src/arm_em/.vscode
+/src/cryoblob/.vscode
 /notebooks/.vscode
 /tests/.vscode
 /tests/__pycache__/
@@ -34,7 +34,7 @@ parts/
 sdist/
 var/
 *.egg-info/
-/src/arm_em.egg-info
+/src/cryoblob.egg-info
 .installed.cfg
 *.egg
 
@@ -51,7 +51,7 @@ pip-delete-this-directory.txt
 cufile.log
 tests/cufile.log
 src/cufile.log
-src/arm_em/cufile.log
+src/cryoblob/cufile.log
 notebooks/cufile.log
 
 # Unit test / coverage reports
@@ -84,8 +84,8 @@ target/
 .ipynb_checkpoints/
 /src/.ipynb_checkpoints/
 /notebooks/.ipynb_checkpoints/
-/src/arm_em/params/.ipynb_checkpoints/
-/src/arm_em/.ipynb_checkpoints
+/src/cryoblob/params/.ipynb_checkpoints/
+/src/cryoblob/.ipynb_checkpoints
 /tests/.ipynb_checkpoints
 /data/.ipynb_checkpoints
 /data/miguel/.ipynb_checkpoints/
