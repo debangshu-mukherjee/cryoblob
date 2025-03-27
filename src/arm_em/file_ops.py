@@ -13,12 +13,8 @@ from beartype.typing import (Dict, List, Literal, Optional, Tuple, TypeAlias,
 from jax import device_get, device_put, lax, vmap
 from jaxtyping import Array, Float, Int, Num, jaxtyped
 from tqdm.auto import tqdm
-
+from arm_em.types import *
 import arm_em
-
-scalar_float: TypeAlias = Union[float, Float[Array, ""]]
-scalar_int: TypeAlias = Union[int, Int[Array, ""]]
-scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
 jax.config.update("jax_enable_x64", True)
 
 

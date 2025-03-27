@@ -6,14 +6,8 @@ from beartype.typing import (Callable, Literal, Optional, Tuple, TypeAlias,
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
-
+from arm_em.types import *
 import arm_em
-
-scalar_float: TypeAlias = Union[float, Float[Array, ""]]
-scalar_int: TypeAlias = Union[int, Integer[Array, ""]]
-scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
-non_jax_number: TypeAlias = Union[int, float]
-
 jax.config.update("jax_enable_x64", True)
 
 

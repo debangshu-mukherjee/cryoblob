@@ -1,16 +1,12 @@
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker
-from beartype.typing import Optional, Tuple, TypeAlias, Union
+from beartype.typing import Optional, Tuple, Union
 from jax import lax
-from jaxtyping import Array, Bool, Float, Integer, Num, jaxtyped
+from jaxtyping import Array, Float, jaxtyped
 
 import arm_em
-
-scalar_float: TypeAlias = Union[float, Float[Array, ""]]
-scalar_int: TypeAlias = Union[int, Integer[Array, ""]]
-scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
-non_jax_number: TypeAlias = Union[int, float]
+from arm_em.types import *
 
 jax.config.update("jax_enable_x64", True)
 
