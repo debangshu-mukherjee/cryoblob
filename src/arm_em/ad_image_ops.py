@@ -66,3 +66,94 @@ def adaptive_wiener(
     filtered_img = arm_em.wiener(img, kernel_size, optimized_noise)
 
     return filtered_img, optimized_noise
+
+
+@jaxtyped(typechecker=typechecker)
+def adaptive_threshold(
+    img: Float[Array, "h w"],
+    target: Float[Array, "h w"],
+    initial_threshold: Optional[scalar_float] = 0.5,
+    initial_slope: Optional[scalar_float] = 10.0,
+    learning_rate: Optional[scalar_float] = 0.01,
+    iterations: Optional[scalar_int] = 100,
+) -> Tuple[Float[Array, "h w"], scalar_float, scalar_float]:
+    """
+    Description
+    -----------
+    Adaptively optimizes thresholding parameters using gradient descent
+    to produce a differentiably thresholded image.
+
+    Parameters
+    ----------
+    - `img` (Float[Array, "h w"]):
+        The input image to threshold.
+    - `target` (Float[Array, "h w"]):
+        A reference binary image for supervised parameter optimization.
+    - `initial_threshold` (scalar_float, optional):
+        Initial guess for the threshold parameter.
+        Default is 0.5.
+    - `initial_slope` (scalar_float, optional):
+        Initial guess for the slope controlling sigmoid steepness.
+        Default is 10.0.
+    - `learning_rate` (scalar_float, optional):
+        The learning rate used during gradient optimization.
+        Default is 0.01.
+    - `iterations` (scalar_int, optional):
+        Number of iterations for gradient optimization.
+        Default is 100.
+
+    Returns
+    -------
+    - `thresholded_img` (Float[Array, "h w"]):
+        The image after differentiable thresholding using optimized parameters.
+    - `optimized_threshold` (scalar_float):
+        The optimized threshold parameter.
+    - `optimized_slope` (scalar_float):
+        The optimized slope parameter.
+
+    Flow
+    ----
+    - `sigmoid_threshold`:
+        Applies a sigmoid function to the input image.
+    - `threshold_loss_fn`:
+        Computes the loss between the thresholded image and the target.
+    - `step`:
+        Performs a single optimization step.
+    - `optimized_params`:
+        Optimizes threshold and slope parameters.
+    - `thresholded_img`:
+        Applies the optimized thresholding parameters to the
+        input image.
+    """
+
+    def sigmoid_threshold(
+        img: Float[Array, "h w"],
+        threshold: scalar_float,
+        slope: scalar_float,
+    ) -> Float[Array, "h w"]:
+        return jax.nn.sigmoid(slope * (img - threshold))
+
+    def threshold_loss_fn(
+        params: Float[Array, "2"],
+        img: Float[Array, "h w"],
+        target: Float[Array, "h w"],
+    ) -> scalar_float:
+        threshold, slope = params
+        thresh_img = sigmoid_threshold(img, threshold, slope)
+        return jnp.mean((thresh_img - target) ** 2)
+
+    def step(params: Float[Array, "2"], _: None) -> Tuple[Float[Array, "2"], None]:
+        grads = jax.grad(threshold_loss_fn)(params, img, target)
+        updated_params = params - learning_rate * grads
+        updated_params = updated_params.at[1].set(
+            jnp.clip(updated_params[1], 1.0, 50.0)
+        )
+        return updated_params, None
+
+    initial_params: Float[Array, "2"] = jnp.array([initial_threshold, initial_slope])
+    optimized_params, _ = lax.scan(step, initial_params, None, length=iterations)
+
+    optimized_threshold, optimized_slope = optimized_params
+    thresholded_img = sigmoid_threshold(img, optimized_threshold, optimized_slope)
+
+    return thresholded_img, optimized_threshold, optimized_slope
