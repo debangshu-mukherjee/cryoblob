@@ -1,9 +1,9 @@
 """
-Module: image_utils
+Module: image
 ---------------------------
 
-Contains the basic functions for image processing, 
-including resizing, filtering. This module will be 
+Contains the basic functions for image processing,
+including resizing, filtering. This module will be
 used for data preprocessing.
 
 Functions:
@@ -31,16 +31,16 @@ Functions:
 - `equalize_hist`:
     Perform histogram equalization on an image using JAX.
 """
+
 import jax
 import jax.numpy as jnp
 from beartype import beartype
-from beartype.typing import (Callable, Literal, Optional, Tuple, TypeAlias,
-                             Union)
+from beartype.typing import Callable, Literal, Optional, Tuple, Union
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
 
-import cryoblob
+import cryoblob as cb
 from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
@@ -81,9 +81,9 @@ def image_resizer(
     in_y, in_x = image.shape
     new_y_len: scalar_int = jnp.round(in_y / sampling_array[0]).astype(jnp.int32)
     new_x_len: scalar_int = jnp.round(in_x / sampling_array[1]).astype(jnp.int32)
-    resized_x: Float[Array, "y new_x"] = cryoblob.resize_x(image, new_x_len)
+    resized_x: Float[Array, "y new_x"] = cb.resize_x(image, new_x_len)
     swapped: Float[Array, "new_x y"] = jnp.swapaxes(resized_x, 0, 1)
-    resized_xy: Float[Array, "new_x new_y"] = cryoblob.resize_x(swapped, new_y_len)
+    resized_xy: Float[Array, "new_x new_y"] = cb.resize_x(swapped, new_y_len)
     resampled_image: Float[Array, "new_y new_x"] = jnp.swapaxes(resized_xy, 0, 1)
     return resampled_image
 
@@ -123,13 +123,13 @@ def resize_x(
             m: Integer[Array, ""] = carry[0]
 
             def while_cond(
-                state: Tuple[Integer[Array, ""], Float[Array, ""], None]
+                state: Tuple[Integer[Array, ""], Float[Array, ""], None],
             ) -> Bool[Array, ""]:
                 m_state: Integer[Array, ""] = state[0]
                 return ((m_state * new_x_len) - (nn * orig_x_len)) < orig_x_len
 
             def while_body(
-                state: Tuple[Integer[Array, ""], Float[Array, ""], None]
+                state: Tuple[Integer[Array, ""], Float[Array, ""], None],
             ) -> Tuple[Integer[Array, ""], Float[Array, ""], None]:
                 m_state, data_sum, _ = state
                 new_sum = data_sum + col[m_state]
@@ -183,6 +183,7 @@ def gaussian_kernel(
     gaussian: Float[Array, "size size"] = jnp.exp(-(x**2 + y**2) / (2.0 * sigma**2))
     kernel: Float[Array, "size size"] = gaussian / jnp.sum(gaussian)
     return kernel
+
 
 @jaxtyped(typechecker=beartype)
 def apply_gaussian_blur(
@@ -268,22 +269,23 @@ def difference_of_gaussians(
     resize_needed: bool = sampling != 1
     sampled_image: Float[Array, "y x"] = jax.lax.cond(
         resize_needed,
-        lambda img: cryoblob.image_resizer(img, resize_factor),
+        lambda img: cb.image_resizer(img, resize_factor),
         lambda img: jnp.asarray(img, dtype=jnp.float64),
         image,
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        cryoblob.equalize_hist,
+        cb
+.equalize_hist,
         lambda img: img,
         sampled_image,
     )
     size1: scalar_int = jnp.maximum(3, (jnp.round(sigma1 * 6) // 2) * 2 + 1)
     size2: scalar_int = jnp.maximum(3, (jnp.round(sigma2 * 6) // 2) * 2 + 1)
-    gauss_kernel1: Float[Array, "size1 size1"] = cryoblob.gaussian_kernel(
+    gauss_kernel1: Float[Array, "size1 size1"] = cb.gaussian_kernel(
         size=size1, sigma=sigma1
     )
-    gauss_kernel2: Float[Array, "size2 size2"] = cryoblob.gaussian_kernel(
+    gauss_kernel2: Float[Array, "size2 size2"] = cb.gaussian_kernel(
         size=size2, sigma=sigma2
     )
     blur1: Float[Array, "y x"] = signal.convolve2d(
@@ -346,20 +348,22 @@ def laplacian_of_gaussian(
     resize_needed: bool = sampling != 1
     sampled_image: Float[Array, "y x"] = jax.lax.cond(
         resize_needed,
-        lambda img: cryoblob.image_resizer(img, resize_factor),
+        lambda img: cb
+.image_resizer(img, resize_factor),
         lambda img: jnp.asarray(img, dtype=jnp.float64),
         image,
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        cryoblob.equalize_hist,
+        cb
+.equalize_hist,
         lambda img: img,
         sampled_image,
     )
     kernel_size: scalar_int = jnp.maximum(
         3, (jnp.round(standard_deviation * 6) // 2) * 2 + 1
     )
-    log_kernel: Float[Array, "kernel_size kernel_size"] = cryoblob.laplacian_kernel(
+    log_kernel: Float[Array, "kernel_size kernel_size"] = cb.laplacian_kernel(
         mode="gaussian", size=kernel_size, sigma=standard_deviation
     )
     filtered: Float[Array, "y x"] = signal.convolve2d(
@@ -372,6 +376,7 @@ def laplacian_of_gaussian(
         filtered,
     )
     return filtered
+
 
 @jaxtyped(typechecker=beartype)
 def laplacian_kernel(
@@ -407,12 +412,12 @@ def laplacian_kernel(
         return jnp.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32)
 
     def diagonal_kernel(
-        _: tuple[scalar_int, scalar_float]
+        _: tuple[scalar_int, scalar_float],
     ) -> Float[Array, "size size"]:
         return jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
 
     def gaussian_kernel(
-        params: tuple[scalar_int, scalar_float]
+        params: tuple[scalar_int, scalar_float],
     ) -> Float[Array, "size size"]:
         kernel_size, kernel_sigma = params
         kernel_size = jnp.maximum(3, (kernel_size // 2) * 2 + 1)
@@ -472,7 +477,7 @@ def perona_malik(
     num_iter: scalar_int,
     kappa: scalar_float,
     gamma: Optional[scalar_float] = 0.1,
-    conduction_fn: Optional[Callable] = cryoblob.exponential_kernel,
+    conduction_fn: Optional[Callable] = cb.exponential_kernel,
 ) -> Float[Array, "H W"]:
     """
     Perform edge-preserving denoising using the Perona-Malik anisotropic diffusion.
@@ -633,7 +638,7 @@ def equalize_hist(
         flat_normalized = normalized.ravel()
 
     # Calculate histogram
-    hist: Integer[Array, "bins"] = cryoblob.histogram(
+    hist: Integer[Array, "bins"] = cb.histogram(
         flat_normalized, bins=nbins, range_limits=(0.0, 1.0)
     )
 
@@ -943,9 +948,9 @@ def find_connected_components(
 
 @jaxtyped(typechecker=beartype)
 def center_of_mass_3d(
-    image: Float[Array, "x y z"], 
+    image: Float[Array, "x y z"],
     labels: Integer[Array, "x y z"],
-    num_labels: scalar_int
+    num_labels: scalar_int,
 ) -> Float[Array, "n 3"]:
     """
     Description
@@ -1018,9 +1023,12 @@ def find_particle_coords(
     binary: Bool[Array, "x y z"] = max_filtered > image_thresh
 
     # Find connected components
-    labels, num_labels = cryoblob.find_connected_components(binary)
+    labels, num_labels = cb.find_connected_components(binary)
 
     # Calculate center of mass for each component
-    coords = cryoblob.center_of_mass_3d(results_3D, labels, num_labels)
+    coords = cb.center_of_mass_3d(results_3D, labels, num_labels)
+    labels, num_labels = cb.find_connected_components(binary)
 
+    # Calculate center of mass for each component
+    coords = cb.center_of_mass_3d(results_3D, labels, num_labels)
     return coords

@@ -154,9 +154,9 @@ class test_gaussian_kernel(chex.TestCase):
             for sigma in sigmas:
                 kernel = var_gaussian_kernel(size, sigma)
                 kernel_sum = jnp.sum(kernel)
-                assert jnp.isclose(
-                    kernel_sum, 1.0, atol=1e-6
-                ), f"Kernel sum = {kernel_sum} for size={size}, sigma={sigma}"
+                assert jnp.isclose(kernel_sum, 1.0, atol=1e-6), (
+                    f"Kernel sum = {kernel_sum} for size={size}, sigma={sigma}"
+                )
 
     @chex.all_variants
     def test_kernel_symmetry(self):
@@ -183,9 +183,9 @@ class test_gaussian_kernel(chex.TestCase):
             kernel = var_gaussian_kernel(size, sigma)
             center = size // 2
             center_value = kernel[center, center]
-            assert jnp.all(
-                kernel <= center_value
-            ), f"Center value {center_value} is not maximum for size={size}"
+            assert jnp.all(kernel <= center_value), (
+                f"Center value {center_value} is not maximum for size={size}"
+            )
 
     @chex.all_variants
     @parameterized.parameters(
@@ -214,9 +214,9 @@ class test_gaussian_kernel(chex.TestCase):
         # Center value should be largest
         center_value = kernel[1, 1]
         corner_value = kernel[0, 0]
-        assert (
-            center_value > corner_value
-        ), f"Center value {center_value} not greater than corner value {corner_value}"
+        assert center_value > corner_value, (
+            f"Center value {center_value} not greater than corner value {corner_value}"
+        )
 
     @chex.all_variants
     def test_kernel_dtype(self):
@@ -311,9 +311,9 @@ class test_wiener(chex.TestCase):
         # Check if noise is reduced
         noisy_variance = jnp.var(noisy_image)
         filtered_variance = jnp.var(filtered)
-        assert (
-            filtered_variance < noisy_variance
-        ), f"Filtered variance ({filtered_variance}) not less than noisy variance ({noisy_variance})"
+        assert filtered_variance < noisy_variance, (
+            f"Filtered variance ({filtered_variance}) not less than noisy variance ({noisy_variance})"
+        )
 
     @chex.all_variants
     def test_constant_image(self):

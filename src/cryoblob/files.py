@@ -1,10 +1,10 @@
 """
-Module: file_ops
+Module: files
 ---------------------------
 
 Contains the codes for interfacing with data files.
 One goal here is to separate the Python code from
-the JAX code. Thus most of the necessary outward 
+the JAX code. Thus most of the necessary outward
 facing code, which is necessarily in Python, is here.
 
 Functions
@@ -18,6 +18,7 @@ Functions
 - `folder_blobs`:
     Process a folder of images for blob detection with memory optimization.
 """
+
 import glob
 import json
 import os
@@ -28,13 +29,12 @@ import jax.numpy as jnp
 import mrcfile
 import numpy as np
 import pandas as pd
-from beartype.typing import (Dict, List, Literal, Optional, Tuple, TypeAlias,
-                             Union)
+from beartype.typing import Dict, List, Literal, Tuple
 from jax import device_get, device_put, vmap
-from jaxtyping import Array, Float, Int, Num, jaxtyped
+from jaxtyping import Array, Float
 from tqdm.auto import tqdm
 
-import cryoblob
+import cryoblob as cb
 from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
@@ -117,14 +117,14 @@ def process_single_file(
         im_data = device_put(im_data)
 
         # Preprocess and detect blobs
-        preprocessed_imdata = cryoblob.preprocessing(
+        preprocessed_imdata = cb.preprocessing(
             image_orig=im_data, return_params=False, **preprocessing_kwargs
         )
 
         # Clear intermediate results
         del im_data
 
-        blob_list = cryoblob.blob_list(preprocessed_imdata, downscale=blob_downscale)
+        blob_list = cb.blob_list(preprocessed_imdata, downscale=blob_downscale)
 
         # Clear more intermediate results
         del preprocessed_imdata
@@ -230,7 +230,7 @@ def folder_blobs(
         )
 
     # Estimate optimal batch size
-    batch_size = cryoblob.estimate_batch_size(file_list[0], target_memory_gb)
+    batch_size = cb.estimate_batch_size(file_list[0], target_memory_gb)
 
     # Process files in batches with progress tracking
     all_blobs = []

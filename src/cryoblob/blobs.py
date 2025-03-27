@@ -1,5 +1,5 @@
 """
-Module: blob_detection
+Module: blobs
 ---------------------------
 
 Codes for actually detecting the blobs. The image
@@ -14,14 +14,15 @@ Functions
 - `blob_list`:
     Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
 """
+
 import jax
 import jax.numpy as jnp
 from beartype import beartype
-from beartype.typing import Optional, TypeAlias, Union
+from beartype.typing import Optional
 from jax import lax
-from jaxtyping import Array, Float, Int, Num, jaxtyped
+from jaxtyping import Array, Float, jaxtyped
 
-import cryoblob
+import cryoblob as cb
 from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
@@ -90,13 +91,13 @@ def preprocessing(
     if logarizer:
         image_proc = jnp.log(image_proc)
     if gblur > 0:
-        image_proc = cryoblob.apply_gaussian_blur(image_proc, sigma=gblur)
+        image_proc = cb.apply_gaussian_blur(image_proc, sigma=gblur)
     if background > 0:
-        image_proc = image_proc - cryoblob.apply_gaussian_blur(
+        image_proc = image_proc - cb.apply_gaussian_blur(
             image_proc, sigma=background
         )
     if apply_filter > 0:
-        image_proc = cryoblob.wiener(image_proc, kernel_size=apply_filter)
+        image_proc = cb.wiener(image_proc, kernel_size=apply_filter)
     if return_params:
         return image_proc, processing_params
     else:
@@ -161,13 +162,13 @@ def blob_list(
     peak_range: Float[Array, "c"] = jnp.arange(
         start=min_blob_size, stop=max_blob_size, step=blob_step
     )
-    scaled_image: Float[Array, "e f"] = cryoblob.fast_resizer(image, (1 / downscale))
+    scaled_image: Float[Array, "e f"] = cb.fast_resizer(image, (1 / downscale))
 
     if jnp.amin(x=jnp.asarray(jnp.shape(scaled_image))) < 20:
         raise ValueError("Image is too small for blob detection")
 
     vectorized_log = jax.vmap(
-        cryoblob.laplacian_gaussian,
+        cb.laplacian_gaussian,
         in_axes=(
             None,
             0,
@@ -189,7 +190,7 @@ def blob_list(
     image_thresh: Float[Array, "e f r"] = jnp.mean(max_filtered) + (
         std_threshold * jnp.std(max_filtered)
     )
-    coords = cryoblob.find_particle_coords(results_3D, max_filtered, image_thresh)
+    coords = cb.find_particle_coords(results_3D, max_filtered, image_thresh)
     scaled_coords: Float[Array, "labels 3"] = jnp.concatenate(
         [
             downscale * coords[:, 0:2],  # x, y coordinates

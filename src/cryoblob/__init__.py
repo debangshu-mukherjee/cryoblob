@@ -3,26 +3,26 @@ Module: cryoblob
 ---------------------------
 
 JAX based, JIT compiled, scalable codes for
-detection of amorphous blobs in low SNR cryo-EM 
-images. 
+detection of amorphous blobs in low SNR cryo-EM
+images.
 
 Submodules
 ----------
-- `ad_image_ops`:
-    Adaptive image processing methods that take 
+- `adapt`:
+    Adaptive image processing methods that take
     advantage of JAX's automatic differentiation capabilities.
-- `blob_detection`:
+- `blobs`:
     Contains the core blob detection algorithms.
-- `file_ops`:
+- `files`:
     Interfacing with data files.
-- `image_utils`:
+- `image`:
     Utility functions for image processing.
 - `types`:
     Type aliases and PyTrees.
 """
 
-from .ad_image_ops import *
-from .blob_detection import *
-from .file_ops import *
-from .image_utils import *
+from .adapt import *
+from .blobs import *
+from .files import *
+from .image import *
 from .types import *
