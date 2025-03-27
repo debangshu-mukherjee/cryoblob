@@ -414,6 +414,7 @@ def laplacian_kernel(
     return kernel
 
 
+@jaxtyped(typechecker=typechecker)
 def exponential_kernel(
     arr: Float[Array, "H W"], k: scalar_float
 ) -> Float[Array, "H W"]:
@@ -438,6 +439,7 @@ def exponential_kernel(
     return kernel
 
 
+@jaxtyped(typechecker=typechecker)
 def perona_malik(
     image: Float[Array, "H W"],
     num_iter: scalar_int,
@@ -741,6 +743,7 @@ def equalize_adapthist(
     return equalized
 
 
+@jaxtyped(typechecker=typechecker)
 def wiener(
     img: Float[Array, "h w"],
     kernel_size: Union[int, Tuple[int, int]] = 3,
