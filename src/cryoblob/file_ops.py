@@ -14,8 +14,8 @@ from jax import device_get, device_put, lax, vmap
 from jaxtyping import Array, Float, Int, Num, jaxtyped
 from tqdm.auto import tqdm
 
-import arm_em
-from arm_em.types import *
+import cryoblob
+from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -121,14 +121,14 @@ def process_single_file(
         im_data = device_put(im_data)
 
         # Preprocess and detect blobs
-        preprocessed_imdata = arm_em.preprocessing(
+        preprocessed_imdata = cryoblob.preprocessing(
             image_orig=im_data, return_params=False, **preprocessing_kwargs
         )
 
         # Clear intermediate results
         del im_data
 
-        blob_list = arm_em.blob_list(preprocessed_imdata, downscale=blob_downscale)
+        blob_list = cryoblob.blob_list(preprocessed_imdata, downscale=blob_downscale)
 
         # Clear more intermediate results
         del preprocessed_imdata
@@ -234,7 +234,7 @@ def folder_blobs(
         )
 
     # Estimate optimal batch size
-    batch_size = arm_em.estimate_batch_size(file_list[0], target_memory_gb)
+    batch_size = cryoblob.estimate_batch_size(file_list[0], target_memory_gb)
 
     # Process files in batches with progress tracking
     all_blobs = []

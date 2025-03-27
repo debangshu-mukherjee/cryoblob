@@ -8,7 +8,7 @@ from jax import random
 jax.config.update("jax_enable_x64", True)
 
 # Import your functions here
-from arm_em import fast_resizer, gaussian_kernel, wiener
+from cryoblob import fast_resizer, gaussian_kernel, wiener
 
 if __name__ == "__main__":
     pytest.main([__file__])

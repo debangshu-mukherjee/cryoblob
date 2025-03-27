@@ -5,8 +5,8 @@ from beartype.typing import Optional, Tuple, Union
 from jax import lax
 from jaxtyping import Array, Float, jaxtyped
 
-import arm_em
-from arm_em.types import *
+import cryoblob
+from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -52,7 +52,7 @@ def adaptive_wiener(
         target: Float[Array, "h w"],
         kernel_size: Union[int, Tuple[int, int]],
     ) -> scalar_float:
-        filtered_img = arm_em.wiener(img, kernel_size, noise)
+        filtered_img = cryoblob.wiener(img, kernel_size, noise)
         loss = jnp.mean((filtered_img - target) ** 2)
         return loss
 
@@ -63,7 +63,7 @@ def adaptive_wiener(
         return noise_updated, None
 
     optimized_noise, _ = lax.scan(step, initial_noise, None, length=iterations)
-    filtered_img = arm_em.wiener(img, kernel_size, optimized_noise)
+    filtered_img = cryoblob.wiener(img, kernel_size, optimized_noise)
 
     return filtered_img, optimized_noise
 

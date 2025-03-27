@@ -7,8 +7,8 @@ from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
 
-import arm_em
-from arm_em.types import *
+import cryoblob
+from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -48,9 +48,9 @@ def image_resizer(
     in_y, in_x = image.shape
     new_y_len: scalar_int = jnp.round(in_y / sampling_array[0]).astype(jnp.int32)
     new_x_len: scalar_int = jnp.round(in_x / sampling_array[1]).astype(jnp.int32)
-    resized_x: Float[Array, "y new_x"] = arm_em.resize_x(image, new_x_len)
+    resized_x: Float[Array, "y new_x"] = cryoblob.resize_x(image, new_x_len)
     swapped: Float[Array, "new_x y"] = jnp.swapaxes(resized_x, 0, 1)
-    resized_xy: Float[Array, "new_x new_y"] = arm_em.resize_x(swapped, new_y_len)
+    resized_xy: Float[Array, "new_x new_y"] = cryoblob.resize_x(swapped, new_y_len)
     resampled_image: Float[Array, "new_y new_x"] = jnp.swapaxes(resized_xy, 0, 1)
     return resampled_image
 
@@ -236,22 +236,22 @@ def difference_of_gaussians(
     resize_needed: bool = sampling != 1
     sampled_image: Float[Array, "y x"] = jax.lax.cond(
         resize_needed,
-        lambda img: arm_em.image_resizer(img, resize_factor),
+        lambda img: cryoblob.image_resizer(img, resize_factor),
         lambda img: jnp.asarray(img, dtype=jnp.float64),
         image,
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        arm_em.equalize_hist,
+        cryoblob.equalize_hist,
         lambda img: img,
         sampled_image,
     )
     size1: scalar_int = jnp.maximum(3, (jnp.round(sigma1 * 6) // 2) * 2 + 1)
     size2: scalar_int = jnp.maximum(3, (jnp.round(sigma2 * 6) // 2) * 2 + 1)
-    gauss_kernel1: Float[Array, "size1 size1"] = arm_em.gaussian_kernel(
+    gauss_kernel1: Float[Array, "size1 size1"] = cryoblob.gaussian_kernel(
         size=size1, sigma=sigma1
     )
-    gauss_kernel2: Float[Array, "size2 size2"] = arm_em.gaussian_kernel(
+    gauss_kernel2: Float[Array, "size2 size2"] = cryoblob.gaussian_kernel(
         size=size2, sigma=sigma2
     )
     blur1: Float[Array, "y x"] = signal.convolve2d(
@@ -314,20 +314,20 @@ def laplacian_of_gaussian(
     resize_needed: bool = sampling != 1
     sampled_image: Float[Array, "y x"] = jax.lax.cond(
         resize_needed,
-        lambda img: arm_em.image_resizer(img, resize_factor),
+        lambda img: cryoblob.image_resizer(img, resize_factor),
         lambda img: jnp.asarray(img, dtype=jnp.float64),
         image,
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        arm_em.equalize_hist,
+        cryoblob.equalize_hist,
         lambda img: img,
         sampled_image,
     )
     kernel_size: scalar_int = jnp.maximum(
         3, (jnp.round(standard_deviation * 6) // 2) * 2 + 1
     )
-    log_kernel: Float[Array, "kernel_size kernel_size"] = arm_em.laplacian_kernel(
+    log_kernel: Float[Array, "kernel_size kernel_size"] = cryoblob.laplacian_kernel(
         mode="gaussian", size=kernel_size, sigma=standard_deviation
     )
     filtered: Float[Array, "y x"] = signal.convolve2d(
@@ -441,7 +441,7 @@ def perona_malik(
     num_iter: scalar_int,
     kappa: scalar_float,
     gamma: Optional[scalar_float] = 0.1,
-    conduction_fn: Optional[Callable] = arm_em.exponential_kernel,
+    conduction_fn: Optional[Callable] = cryoblob.exponential_kernel,
 ) -> Float[Array, "H W"]:
     """
     Perform edge-preserving denoising using the Perona-Malik anisotropic diffusion.
@@ -602,7 +602,7 @@ def equalize_hist(
         flat_normalized = normalized.ravel()
 
     # Calculate histogram
-    hist: Integer[Array, "bins"] = arm_em.histogram(
+    hist: Integer[Array, "bins"] = cryoblob.histogram(
         flat_normalized, bins=nbins, range_limits=(0.0, 1.0)
     )
 
@@ -985,9 +985,9 @@ def find_particle_coords(
     binary: Bool[Array, "x y z"] = max_filtered > image_thresh
 
     # Find connected components
-    labels, num_labels = arm_em.find_connected_components(binary)
+    labels, num_labels = cryoblob.find_connected_components(binary)
 
     # Calculate center of mass for each component
-    coords = arm_em.center_of_mass_3d(results_3D, labels, num_labels)
+    coords = cryoblob.center_of_mass_3d(results_3D, labels, num_labels)
 
     return coords

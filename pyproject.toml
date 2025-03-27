@@ -1,5 +1,5 @@
 [project]
-name = "arm_em"
+name = "cryoblob"
 version = "2025.03.24"
 description = "Particle Picking of Cryo-EM Datasets"
 authors = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, {name = "Alexis N. Williams", email = "williamsan@ornl.gov"}, {name = "Albina Y. Borisevich", email = "albinab@ornl.gov"}]

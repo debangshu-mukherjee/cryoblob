@@ -5,8 +5,8 @@ from beartype.typing import Optional, TypeAlias, Union
 from jax import lax
 from jaxtyping import Array, Float, Int, Num, jaxtyped
 
-import arm_em
-from arm_em.types import *
+import cryoblob
+from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -74,13 +74,13 @@ def preprocessing(
     if logarizer:
         image_proc = jnp.log(image_proc)
     if gblur > 0:
-        image_proc = arm_em.apply_gaussian_blur(image_proc, sigma=gblur)
+        image_proc = cryoblob.apply_gaussian_blur(image_proc, sigma=gblur)
     if background > 0:
-        image_proc = image_proc - arm_em.apply_gaussian_blur(
+        image_proc = image_proc - cryoblob.apply_gaussian_blur(
             image_proc, sigma=background
         )
     if apply_filter > 0:
-        image_proc = arm_em.wiener(image_proc, kernel_size=apply_filter)
+        image_proc = cryoblob.wiener(image_proc, kernel_size=apply_filter)
     if return_params:
         return image_proc, processing_params
     else:
@@ -144,13 +144,13 @@ def blob_list(
     peak_range: Float[Array, "c"] = jnp.arange(
         start=min_blob_size, stop=max_blob_size, step=blob_step
     )
-    scaled_image: Float[Array, "e f"] = arm_em.fast_resizer(image, (1 / downscale))
+    scaled_image: Float[Array, "e f"] = cryoblob.fast_resizer(image, (1 / downscale))
 
     if jnp.amin(x=jnp.asarray(jnp.shape(scaled_image))) < 20:
         raise ValueError("Image is too small for blob detection")
 
     vectorized_log = jax.vmap(
-        arm_em.laplacian_gaussian,
+        cryoblob.laplacian_gaussian,
         in_axes=(
             None,
             0,
@@ -172,7 +172,7 @@ def blob_list(
     image_thresh: Float[Array, "e f r"] = jnp.mean(max_filtered) + (
         std_threshold * jnp.std(max_filtered)
     )
-    coords = arm_em.find_particle_coords(results_3D, max_filtered, image_thresh)
+    coords = cryoblob.find_particle_coords(results_3D, max_filtered, image_thresh)
     scaled_coords: Float[Array, "labels 3"] = jnp.concatenate(
         [
             downscale * coords[:, 0:2],  # x, y coordinates
