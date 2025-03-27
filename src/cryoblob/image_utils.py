@@ -33,7 +33,7 @@ Functions:
 """
 import jax
 import jax.numpy as jnp
-from beartype import beartype as typechecker
+from beartype import beartype
 from beartype.typing import (Callable, Literal, Optional, Tuple, TypeAlias,
                              Union)
 from jax import lax
@@ -46,7 +46,7 @@ from cryoblob.types import *
 jax.config.update("jax_enable_x64", True)
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def image_resizer(
     orig_image: Union[Real[Array, "y x"], Real[Array, "y x c"]],
     new_sampling: Union[Real[Array, ""], Real[Array, "2"]],
@@ -88,7 +88,7 @@ def image_resizer(
     return resampled_image
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def resize_x(
     x_image: Num[Array, "y x"], new_x_len: scalar_int
 ) -> Float[Array, "y new_x"]:
@@ -153,7 +153,7 @@ def resize_x(
     return resized
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def gaussian_kernel(
     size: scalar_int,
     sigma: scalar_float,
@@ -184,8 +184,7 @@ def gaussian_kernel(
     kernel: Float[Array, "size size"] = gaussian / jnp.sum(gaussian)
     return kernel
 
-
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
     sigma: Optional[scalar_float] = 1.0,
@@ -223,7 +222,7 @@ def apply_gaussian_blur(
     return blurred
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def difference_of_gaussians(
     image: Real[Array, "y x"],
     sigma1: scalar_num,
@@ -303,7 +302,7 @@ def difference_of_gaussians(
     return dog_filtered
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def laplacian_of_gaussian(
     image: Real[Array, "y x"],
     standard_deviation: scalar_num = 3,
@@ -374,8 +373,7 @@ def laplacian_of_gaussian(
     )
     return filtered
 
-
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def laplacian_kernel(
     mode: Literal["basic", "diagonal", "gaussian"] = "basic",
     size: scalar_int = 3,
@@ -443,7 +441,7 @@ def laplacian_kernel(
     return kernel
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def exponential_kernel(
     arr: Float[Array, "H W"], k: scalar_float
 ) -> Float[Array, "H W"]:
@@ -468,7 +466,7 @@ def exponential_kernel(
     return kernel
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def perona_malik(
     image: Float[Array, "H W"],
     num_iter: scalar_int,
@@ -551,7 +549,7 @@ def perona_malik(
     return denoised_image
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def histogram(
     image: Real[Array, "h w"],
     bins: int | None = 256,
@@ -586,7 +584,7 @@ def histogram(
     return hist
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def equalize_hist(
     image: Real[Array, "h w"], nbins: int = 256, mask: Real[Array, "h w"] | None = None
 ) -> Float[Array, "h w"]:
@@ -669,7 +667,7 @@ def equalize_hist(
     return equalized
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def equalize_adapthist(
     image: Real[Array, "h w"],
     kernel_size: int = 8,
@@ -772,7 +770,7 @@ def equalize_adapthist(
     return equalized
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def wiener(
     img: Float[Array, "h w"],
     kernel_size: Union[int, Tuple[int, int]] = 3,
@@ -832,7 +830,7 @@ def wiener(
     return result
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def find_connected_components(
     binary_image: Bool[Array, "x y z"], connectivity: int | None = 6
 ) -> Tuple[Integer[Array, "x y z"], int]:
@@ -943,8 +941,11 @@ def find_connected_components(
     return sequential_labels, num_labels
 
 
+@jaxtyped(typechecker=beartype)
 def center_of_mass_3d(
-    image: Float[Array, "x y z"], labels: Integer[Array, "x y z"], num_labels: int
+    image: Float[Array, "x y z"], 
+    labels: Integer[Array, "x y z"],
+    num_labels: scalar_int
 ) -> Float[Array, "n 3"]:
     """
     Description
@@ -981,14 +982,13 @@ def center_of_mass_3d(
 
         return jnp.array([center_x, center_y, center_z])
 
-    # Vectorize over labels
     centroids: Float[Array, "n 3"] = jax.vmap(compute_centroid)(
         jnp.arange(1, num_labels + 1)
     )
     return centroids
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def find_particle_coords(
     results_3D: Float[Array, "x y z"],
     max_filtered: Float[Array, "x y z"],

@@ -16,7 +16,7 @@ Functions
 """
 import jax
 import jax.numpy as jnp
-from beartype import beartype as typechecker
+from beartype import beartype
 from beartype.typing import Optional, Tuple, Union
 from jax import lax
 from jaxtyping import Array, Float, jaxtyped
@@ -27,7 +27,7 @@ from cryoblob.types import *
 jax.config.update("jax_enable_x64", True)
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def adaptive_wiener(
     img: Float[Array, "h w"],
     target: Float[Array, "h w"],
@@ -84,7 +84,7 @@ def adaptive_wiener(
     return filtered_img, optimized_noise
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def adaptive_threshold(
     img: Float[Array, "h w"],
     target: Float[Array, "h w"],

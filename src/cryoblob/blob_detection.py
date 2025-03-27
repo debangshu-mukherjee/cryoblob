@@ -16,7 +16,7 @@ Functions
 """
 import jax
 import jax.numpy as jnp
-from beartype import beartype as typechecker
+from beartype import beartype
 from beartype.typing import Optional, TypeAlias, Union
 from jax import lax
 from jaxtyping import Array, Float, Int, Num, jaxtyped
@@ -27,7 +27,7 @@ from cryoblob.types import *
 jax.config.update("jax_enable_x64", True)
 
 
-@jaxtyped(typechecker=typechecker)
+@jaxtyped(typechecker=beartype)
 def preprocessing(
     image_orig: Float[Array, "y x"],
     return_params: bool | None = False,
@@ -103,6 +103,7 @@ def preprocessing(
         return image_proc
 
 
+@jaxtyped(typechecker=beartype)
 def blob_list(
     image: Float[Array, "a b"] | Float[Array, "a b c"],
     min_blob_size: Optional[scalar_num] = 10,

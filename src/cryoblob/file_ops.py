@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 from beartype.typing import (Dict, List, Literal, Optional, Tuple, TypeAlias,
                              Union)
-from jax import device_get, device_put, lax, vmap
+from jax import device_get, device_put, vmap
 from jaxtyping import Array, Float, Int, Num, jaxtyped
 from tqdm.auto import tqdm
 
