@@ -6,8 +6,10 @@ from beartype.typing import (Callable, Literal, Optional, Tuple, TypeAlias,
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
-from arm_em.types import *
+
 import arm_em
+from arm_em.types import *
+
 jax.config.update("jax_enable_x64", True)
 
 
