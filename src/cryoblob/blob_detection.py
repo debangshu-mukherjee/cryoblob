@@ -1,3 +1,19 @@
+"""
+Module: blob_detection
+---------------------------
+
+Codes for actually detecting the blobs. The image
+processing and data I/O files are kept separately.
+This just deals with preprocessing data and counting
+blobs.
+
+Functions
+---------
+- `preprocessing`:
+    Pre-processes low SNR images to improve contrast of blobs.
+- `blob_list`:
+    Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
+"""
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker

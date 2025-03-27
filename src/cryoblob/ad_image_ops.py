@@ -1,3 +1,19 @@
+"""
+Module: ad_image_ops
+---------------------------
+
+Contains adaptive image processing methods
+that take advantage of JAX's automatic
+differentiation capabilities.
+
+Functions
+---------
+- `adaptive_wiener`:
+    Adaptive Wiener filter that optimizes the noise estimate using gradient descent.
+- `adaptive_threshold`:
+    Adaptively optimizes thresholding parameters using gradient descent
+    to produce a differentiably thresholded image.
+"""
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker

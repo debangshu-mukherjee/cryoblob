@@ -1,13 +1,24 @@
 """
-==================================================
-JAX based differntiable data processing of cryo-EM 
-particle images. Runs on both CPUs and GPUs.
-==================================================
+Module: cryoblob
+---------------------------
 
-.. currentmodule:: arm_em
+JAX based, JIT compiled, scalable codes for
+detection of amorphous blobs in low SNR cryo-EM 
+images. 
 
-This package contains the functions needed to process the data, using cupy, 
-for the cryo-EM particle images.
+Submodules
+----------
+- `ad_image_ops`:
+    Adaptive image processing methods that take 
+    advantage of JAX's automatic differentiation capabilities.
+- `blob_detection`:
+    Contains the core blob detection algorithms.
+- `file_ops`:
+    Interfacing with data files.
+- `image_utils`:
+    Utility functions for image processing.
+- `types`:
+    Type aliases and PyTrees.
 """
 
 from .ad_image_ops import *

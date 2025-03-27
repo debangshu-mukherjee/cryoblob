@@ -1,3 +1,36 @@
+"""
+Module: image_utils
+---------------------------
+
+Contains the basic functions for image processing, 
+including resizing, filtering. This module will be 
+used for data preprocessing.
+
+Functions:
+----------
+- `image_resizer`:
+    Resize an image using a fast resizing algorithm implemented in JAX.
+- `resize_x`:
+    Resize image along y-axis by independently resampling each column.
+- `gaussian_kernel`:
+    Create a normalized 2D Gaussian kernel.
+- `apply_gaussian_blur`:
+    Apply Gaussian blur to an image using convolution in JAX.
+- `difference_of_gaussians`:
+    Applies Difference of Gaussians (DoG) filtering to enhance circular blobs.
+- `laplacian_of_gaussian`:
+    Applies Laplacian of Gaussian (LoG) filtering to an input image.
+- `laplacian_kernel`:
+    Create a Laplacian kernel for edge detection in a JAX-compatible manner.
+- `exponential_kernel`:
+    Create an exponential kernel for image processing.
+- `perona_malik`:
+    Perform edge-preserving denoising using the Perona-Malik anisotropic diffusion.
+- `histogram`:
+    Calculate the histogram of an image.
+- `equalize_hist`:
+    Perform histogram equalization on an image using JAX.
+"""
 import jax
 import jax.numpy as jnp
 from beartype import beartype as typechecker

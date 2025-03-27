@@ -1,3 +1,23 @@
+"""
+Module: file_ops
+---------------------------
+
+Contains the codes for interfacing with data files.
+One goal here is to separate the Python code from
+the JAX code. Thus most of the necessary outward 
+facing code, which is necessarily in Python, is here.
+
+Functions
+---------
+- `file_params`:
+    Get the parameters for the file organization.
+- `process_single_file`:
+    Process a single file for blob detection with memory optimization.
+- `process_batch_of_files`:
+    Process a batch of files in parallel with memory optimization.
+- `folder_blobs`:
+    Process a folder of images for blob detection with memory optimization.
+"""
 import glob
 import json
 import os
@@ -45,30 +65,6 @@ def file_params() -> Tuple[str, dict]:
         open(files("arm_em.params").joinpath("organization.json"))
     )
     return (main_directory, folder_structure)
-
-
-def estimate_batch_size(sample_file: str, target_memory_gb: float = 4.0) -> int:
-    """
-    Estimate optimal batch size based on available memory.
-
-    Parameters
-    ----------
-    - `sample_file` (str):
-        Path to a sample file for size estimation
-    - `target_memory_gb` (float):
-        Target memory usage in gigabytes
-
-    Returns
-    -------
-    - `batch_size` (int):
-        Recommended batch size
-    """
-    with mrcfile.open(sample_file) as mrc:
-        sample_size = mrc.data.nbytes
-    memory_per_file = sample_size * 4
-    max_memory = target_memory_gb * 1024**3
-    batch_size = max(1, int(max_memory / memory_per_file))
-    return batch_size
 
 
 def process_single_file(
