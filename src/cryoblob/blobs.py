@@ -93,9 +93,7 @@ def preprocessing(
     if gblur > 0:
         image_proc = cb.apply_gaussian_blur(image_proc, sigma=gblur)
     if background > 0:
-        image_proc = image_proc - cb.apply_gaussian_blur(
-            image_proc, sigma=background
-        )
+        image_proc = image_proc - cb.apply_gaussian_blur(image_proc, sigma=background)
     if apply_filter > 0:
         image_proc = cb.wiener(image_proc, kernel_size=apply_filter)
     if return_params:

@@ -275,8 +275,7 @@ def difference_of_gaussians(
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        cb
-.equalize_hist,
+        cb.equalize_hist,
         lambda img: img,
         sampled_image,
     )
@@ -348,15 +347,13 @@ def laplacian_of_gaussian(
     resize_needed: bool = sampling != 1
     sampled_image: Float[Array, "y x"] = jax.lax.cond(
         resize_needed,
-        lambda img: cb
-.image_resizer(img, resize_factor),
+        lambda img: cb.image_resizer(img, resize_factor),
         lambda img: jnp.asarray(img, dtype=jnp.float64),
         image,
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        cb
-.equalize_hist,
+        cb.equalize_hist,
         lambda img: img,
         sampled_image,
     )
@@ -557,8 +554,8 @@ def perona_malik(
 @jaxtyped(typechecker=beartype)
 def histogram(
     image: Real[Array, "h w"],
-    bins: int | None = 256,
-    range_limits: Tuple[float, float] | None = None,
+    bins: Optional[scalar_int] = 256,
+    range_limits: Optional[Tuple[scalar_float, scalar_float]] = None,
 ) -> Integer[Array, "bins"]:
     """
     Description
@@ -569,20 +566,24 @@ def histogram(
     ----------
     - `image` (Real[Array, "h w"]):
         Input image
-    - `bins` (int, optional):
+    - `bins` (scalar_int, optional):
         Number of bins for the histogram. Default is 256
-    - `range_limits` (Tuple[float, float], optional):
+    - `range_limits` (Tuple[scalar_float, scalar_float], optional):
         The lower and upper range of the bins.
-        Default is (image.min(), image.max())
+        Default is None, which use the minimum and maximum values
+        of the image.
 
     Returns
     -------
     - `hist` (Integer[Array, "bins"]):
         The histogram of the image
     """
-    if range_limits is None:
-        range_limits = (float(image.min()), float(image.max()))
-
+    range_limits: Tuple[scalar_float, scalar_float] = jax.lax.cond(
+        range_limits is None,
+        lambda _: (float(image.min()), float(image.max())),
+        lambda rl: rl,
+        operand=range_limits,
+    )
     hist: Integer[Array, "bins"] = jnp.histogram(image, bins=bins, range=range_limits)[
         0
     ]
@@ -591,7 +592,9 @@ def histogram(
 
 @jaxtyped(typechecker=beartype)
 def equalize_hist(
-    image: Real[Array, "h w"], nbins: int = 256, mask: Real[Array, "h w"] | None = None
+    image: Real[Array, "h w"],
+    nbins: Optional[scalar_int] = 256,
+    mask: Optional[Real[Array, "h w"]] = None,
 ) -> Float[Array, "h w"]:
     """
     Description
@@ -602,82 +605,59 @@ def equalize_hist(
     ----------
     - `image` (Real[Array, "h w"]):
         Input image to equalize
-    - `nbins` (int, optional):
-        Number of bins for histogram. Default is 256
+    - `nbins` (scalar_int, optional):
+        Number of bins for histogram.
+        Default is 256
     - `mask` (Real[Array, "h w"], optional):
-        Optional mask to use for selective equalization.
-        Only pixels where mask is True will be included in hist calculation.
+        Optional mask for selective equalization.
         Default is None (use all pixels)
 
     Returns
     -------
     - `equalized` (Float[Array, "h w"]):
         Histogram equalized image
-
-    Notes
-    -----
-    This implementation follows scikit-image's equalize_hist approach:
-    1. Compute histogram
-    2. Calculate cumulative distribution
-    3. Normalize and map values
     """
-    # Check if all values are the same
-    if jnp.all(image == image.ravel()[0]):
-        return jnp.full_like(image, image.ravel()[0], dtype=jnp.float32)
-
-    # Normalize image to [0, 1] range
-    img_range: float = image.max() - image.min()
-    normalized: Float[Array, "h w"] = (image - image.min()) / img_range
-
-    # Handle mask if provided
-    flat_normalized: Real[Array, "p"]
-    if mask is not None:
-        flat_mask = mask.ravel()
-        flat_normalized = jnp.compress(flat_mask, flat_normalized)
-    else:
-        flat_normalized = normalized.ravel()
-
-    # Calculate histogram
+    img_min: scalar_float = jnp.amin(image)
+    img_range: scalar_float = jnp.amax(image) - img_min
+    normalized: Float[Array, "h w"] = (image - img_min) / jnp.maximum(img_range, 1e-8)
+    flat_mask: Bool[Array, "h*w"] = jnp.ravel(jnp.ones_like(normalized, dtype=bool))
+    flat_normalized: Real[Array, "h*w"] = jnp.ravel(normalized)
+    flat_mask, flat_normalized = jax.lax.cond(
+        mask is None,
+        lambda _: (flat_mask, flat_normalized),
+        lambda m: (
+            m.ravel().astype(bool),
+            jnp.compress(m.ravel().astype(bool), flat_normalized),
+        ),
+        operand=mask,
+    )
     hist: Integer[Array, "bins"] = cb.histogram(
         flat_normalized, bins=nbins, range_limits=(0.0, 1.0)
     )
-
-    # Calculate cumulative distribution
-    cdf: Integer[Array, "bins"] = jnp.cumsum(hist)
-
-    # Normalize CDF
+    cdf: Float[Array, "bins"] = jnp.cumsum(hist).astype(jnp.float32)
     cdf: Float[Array, "bins"] = cdf / cdf[-1]
 
-    # Map values using linear interpolation
-    def map_values(x: Float[Array, ""]) -> Float[Array, ""]:
-        # Find bin index
-        bin_idx = jnp.clip(jnp.floor(x * (nbins - 1)).astype(jnp.int32), 0, nbins - 2)
+    def interp(v: Float[Array, ""]) -> Float[Array, ""]:
+        bin_idx: Integer[Array, ""] = jnp.clip(
+            jnp.floor(v * (nbins - 1)).astype(jnp.int32), 0, nbins - 2
+        )
+        cdf_left: Float[Array, ""] = cdf[bin_idx]
+        cdf_right: Float[Array, ""] = cdf[bin_idx + 1]
+        frac: Float[Array, ""] = v * (nbins - 1) - bin_idx
+        return (1 - frac) * cdf_left + frac * cdf_right
 
-        # Get surrounding CDF values
-        cdf_left = cdf[bin_idx]
-        cdf_right = cdf[bin_idx + 1]
-
-        # Calculate fractional position within bin
-        f = (x * (nbins - 1)) - bin_idx
-
-        # Linear interpolation
-        return (1 - f) * cdf_left + f * cdf_right
-
-    # Vectorize mapping function
-    vmap_values = jax.vmap(map_values)
-
-    # Apply mapping
-    equalized: Real[Array, "h w"] = vmap_values(normalized.ravel()).reshape(image.shape)
-
+    equalized: Float[Array, "h w"] = jax.vmap(interp)(normalized.ravel()).reshape(
+        image.shape
+    )
     return equalized
 
 
 @jaxtyped(typechecker=beartype)
 def equalize_adapthist(
     image: Real[Array, "h w"],
-    kernel_size: int = 8,
-    clip_limit: float = 0.01,
-    nbins: int = 256,
+    kernel_size: Optional[scalar_int] = 8,
+    clip_limit: Optional[scalar_float] = 0.01,
+    nbins: Optional[scalar_int] = 256,
 ) -> Float[Array, "h w"]:
     """
     Description
@@ -687,92 +667,84 @@ def equalize_adapthist(
     Parameters
     ----------
     - `image` (Real[Array, "h w"]):
-        Input image
-    - `kernel_size` (int, optional):
-        Size of local region for histogram equalization. Default is 8
-    - `clip_limit` (float, optional):
-        Clipping limit for histogram. Higher values give stronger contrast.
-        Default is 0.01
-    - `nbins` (int, optional):
-        Number of bins for histogram. Default is 256
+        Input image.
+    - `kernel_size` (scalar_int, optional):
+        Size of local regions for histogram equalization. Default is 8.
+    - `clip_limit` (scalar_float, optional):
+        Clipping limit for histogram. Higher values amplify contrast more strongly.
+        Default is 0.01.
+    - `nbins` (scalar_int, optional):
+        Number of bins for the histogram. Default is 256.
 
     Returns
     -------
-    - `equalized` (Float[Array, "h w"]):
-        CLAHE equalized image
-    """
-    # Normalize image to [0, 1]
-    img_min = image.min()
-    img_max = image.max()
-    normalized = (image - img_min) / (img_max - img_min)
+    - `equalized_final` (Float[Array, "h w"]):
+        Image after applying CLAHE.
 
-    # Calculate grid size
+    Notes
+    -----
+    CLAHE performs localized histogram equalization to improve image contrast
+    without amplifying noise excessively. The algorithm:
+
+    - Divides the image into small regions (tiles).
+    - Performs local histogram equalization on each tile separately.
+    - Clips histograms at the specified limit to prevent noise amplification.
+    - Interpolates results to produce a smoothly equalized image.
+    """
+    img_min: scalar_float = jnp.amin(image)
+    img_max: scalar_float = jnp.amax(image)
+    normalized: Float[Array, "h w"] = (image - img_min) / jnp.maximum(
+        (img_max - img_min), 1e-8
+    )
+    h: scalar_int
+    w: scalar_int
     h, w = normalized.shape
-    grid_h = (h + kernel_size - 1) // kernel_size
-    grid_w = (w + kernel_size - 1) // kernel_size
+    grid_h: scalar_int = (h + kernel_size - 1) // kernel_size
+    grid_w: scalar_int = (w + kernel_size - 1) // kernel_size
+    grid_indices: Integer[Array, "num_tiles 2"] = (
+        jnp.array(jnp.meshgrid(jnp.arange(grid_h), jnp.arange(grid_w), indexing="ij"))
+        .reshape(2, -1)
+        .T
+    )
 
     def process_block(block: Float[Array, "kh kw"]) -> Float[Array, "kh kw"]:
-        # Calculate histogram
-        hist = histogram(block, bins=nbins, range_limits=(0.0, 1.0))
+        hist: Float[Array, "bins"] = cb.histogram(
+            block, bins=nbins, range_limits=(0.0, 1.0)
+        ).astype(jnp.float32)
+        clip_val: scalar_float = (clip_limit * block.size) / nbins
+        excess: scalar_float = jnp.sum(jnp.clip(hist - clip_val, 0))
+        gain: scalar_float = excess / block.size
+        hist_clipped: Float[Array, "bins"] = jnp.clip(hist, 0, clip_val) + gain
+        cdf: Float[Array, "bins"] = jnp.cumsum(hist_clipped) / jnp.sum(hist_clipped)
+        bin_idx: Integer[Array, "kh kw"] = jnp.clip(
+            jnp.floor(block * (nbins - 1)).astype(jnp.int32), 0, nbins - 2
+        )
+        frac: Float[Array, "kh kw"] = (block * (nbins - 1)) - bin_idx
+        equalized_block: Float[Array, "kh kw"] = (1 - frac) * cdf[bin_idx] + frac * cdf[
+            bin_idx + 1
+        ]
+        return equalized_block
 
-        # Clip histogram
-        if clip_limit > 0:
-            excess = jnp.sum(jnp.maximum(hist - clip_limit * block.size / nbins, 0))
-            gain = excess / (nbins * block.size)
-            hist = jnp.minimum(hist, clip_limit * block.size / nbins) + gain
-
-        # Calculate CDF
-        cdf = jnp.cumsum(hist)
-        cdf = cdf / cdf[-1]
-
-        # Map values
-        def map_value(x):
-            bin_idx = jnp.clip(
-                jnp.floor(x * (nbins - 1)).astype(jnp.int32), 0, nbins - 2
-            )
-            cdf_left = cdf[bin_idx]
-            cdf_right = cdf[bin_idx + 1]
-            f = (x * (nbins - 1)) - bin_idx
-            return (1 - f) * cdf_left + f * cdf_right
-
-        vmap_value = jax.vmap(map_value)
-        return vmap_value(block.ravel()).reshape(block.shape)
-
-    # Process each block
-    def process_grid(i, j):
-        start_h = i * kernel_size
-        start_w = j * kernel_size
-
-        # Calculate block size (handling edge cases)
-        block_h = jnp.minimum(kernel_size, h - start_h)
-        block_w = jnp.minimum(kernel_size, w - start_w)
-
-        # Use dynamic_slice instead of regular slicing
-        block = jax.lax.dynamic_slice(
+    def clahe_scan(
+        carry: Float[Array, "h w"], idx: Integer[Array, "2"]
+    ) -> Tuple[Float[Array, "h w"], None]:
+        start_h: scalar_int = idx[0] * kernel_size
+        start_w: scalar_int = idx[1] * kernel_size
+        block_h: scalar_int = jnp.minimum(kernel_size, h - start_h)
+        block_w: scalar_int = jnp.minimum(kernel_size, w - start_w)
+        block: Float[Array, "block_h block_w"] = jax.lax.dynamic_slice(
             normalized, (start_h, start_w), (block_h, block_w)
         )
+        processed: Float[Array, "block_h block_w"] = process_block(block)
+        updated: Float[Array, "h w"] = jax.lax.dynamic_update_slice(
+            carry, processed, (start_h, start_w)
+        )
+        return updated, None
 
-        return process_block(block)
-
-    # Create output array
-    equalized = jnp.zeros_like(normalized)
-
-    # Apply CLAHE to each block
-    for i in range(grid_h):
-        for j in range(grid_w):
-            start_h = i * kernel_size
-            start_w = j * kernel_size
-            block_h = min(kernel_size, h - start_h)
-            block_w = min(kernel_size, w - start_w)
-
-            processed_block = process_grid(i, j)
-
-            # Use dynamic_update_slice for setting values
-            equalized = jax.lax.dynamic_update_slice(
-                equalized, processed_block, (start_h, start_w)
-            )
-
-    return equalized
+    equalized_init: Float[Array, "h w"] = jnp.zeros_like(normalized)
+    equalized_final: Float[Array, "h w"]
+    equalized_final, _ = jax.lax.scan(clahe_scan, equalized_init, grid_indices)
+    return equalized_final
 
 
 @jaxtyped(typechecker=beartype)
@@ -838,7 +810,7 @@ def wiener(
 @jaxtyped(typechecker=beartype)
 def find_connected_components(
     binary_image: Bool[Array, "x y z"], connectivity: int | None = 6
-) -> Tuple[Integer[Array, "x y z"], int]:
+) -> Tuple[Integer[Array, "x y z"], scalar_int]:
     """
     Description
     -----------
@@ -934,7 +906,7 @@ def find_connected_components(
 
     # Relabel components to be sequential
     unique_labels = jnp.unique(final_labels)
-    num_labels = len(unique_labels) - 1  # subtract 1 for background
+    num_labels: scalar_int = len(unique_labels) - 1  # subtract 1 for background
 
     # Create mapping for sequential labels
     label_map = jnp.zeros(jnp.max(unique_labels) + 1, dtype=jnp.int32)
@@ -984,7 +956,6 @@ def center_of_mass_3d(
         center_x: Float[Array, ""] = jnp.sum(masked_image * x_coords) / total_mass
         center_y: Float[Array, ""] = jnp.sum(masked_image * y_coords) / total_mass
         center_z: Float[Array, ""] = jnp.sum(masked_image * z_coords) / total_mass
-
         return jnp.array([center_x, center_y, center_z])
 
     centroids: Float[Array, "n 3"] = jax.vmap(compute_centroid)(
@@ -997,7 +968,7 @@ def center_of_mass_3d(
 def find_particle_coords(
     results_3D: Float[Array, "x y z"],
     max_filtered: Float[Array, "x y z"],
-    image_thresh: float,
+    image_thresh: scalar_float,
 ) -> Float[Array, "n 3"]:
     """
     Description
@@ -1011,7 +982,7 @@ def find_particle_coords(
         3D array of filter responses
     - `max_filtered` (Float[Array, "x y z"]):
         Maximum filtered array
-    - `image_thresh` (float):
+    - `image_thresh` (scalar_float):
         Threshold for peak detection
 
     Returns
@@ -1019,16 +990,11 @@ def find_particle_coords(
     - `coords` (Float[Array, "n 3"]):
         Array of particle coordinates
     """
-    # Create binary image of peaks
     binary: Bool[Array, "x y z"] = max_filtered > image_thresh
-
-    # Find connected components
+    labels: Integer[Array, "x y z"]
+    num_labels: scalar_int
     labels, num_labels = cb.find_connected_components(binary)
-
-    # Calculate center of mass for each component
     coords = cb.center_of_mass_3d(results_3D, labels, num_labels)
     labels, num_labels = cb.find_connected_components(binary)
-
-    # Calculate center of mass for each component
-    coords = cb.center_of_mass_3d(results_3D, labels, num_labels)
+    coords: Float[Array, "n 3"] = cb.center_of_mass_3d(results_3D, labels, num_labels)
     return coords
