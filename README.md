@@ -32,32 +32,13 @@ cd multi-particle-cryoem
 
 ## Installation
 
-After pre-installation, these are the directions to install the `arm_em` package.
-
-#### Default install (CPU-enabled version)
-
-By default, the package works in CPU-only mode:
+After pre-installation, these are the directions to install the `cryoblob` package.
 
 ```
 pip install -e .
 ```
 
-#### GPU-enabled version
-
-To run the GPU-enabled package you need at least one Nvidia GPU installed on your system. 
-
-Add the following optionatl package to your install command:
-```
-pip install -e .[gpu]
-```
-
-#### Development
-
-To add the development dependencies for code checks, use:
-```
-pip install -e .[dev]
-```
 
 ## Package Organization
-* The **codes** are located in */src/arm_em/*
-* The **notebooks** are located in */notebooks/*
+* The **codes** are located in */src/cryoblob/*
+* The **notebooks** are located in */tutorials/*

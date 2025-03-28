@@ -26,7 +26,7 @@ import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple
 from jax import lax
-from jaxtyping import Array, Float, Bool, jaxtyped
+from jaxtyping import Array, Bool, Float, jaxtyped
 
 import cryoblob as cb
 from cryoblob.types import *
@@ -170,19 +170,27 @@ def center_of_mass_3d(
     - `centroids` (Float[Array, "n 3"]):
         Array of centroid coordinates for each label
     """
+
     def centroid(label_idx: scalar_int) -> Float[Array, "3"]:
-        mask: Bool[Array, "x y z"] = (labels == label_idx)
+        mask: Bool[Array, "x y z"] = labels == label_idx
         masked_image: Float[Array, "x y z"] = jnp.where(mask, image, 0.0)
         total_mass: scalar_float = jnp.sum(masked_image)
-        coords: Float[Array, "3"] = jnp.array([
-            jnp.sum(masked_image * jnp.arange(image.shape[0])[:, None, None]) / total_mass,
-            jnp.sum(masked_image * jnp.arange(image.shape[1])[None, :, None]) / total_mass,
-            jnp.sum(masked_image * jnp.arange(image.shape[2])[None, None, :]) / total_mass
-        ])
+        coords: Float[Array, "3"] = jnp.array(
+            [
+                jnp.sum(masked_image * jnp.arange(image.shape[0])[:, None, None])
+                / total_mass,
+                jnp.sum(masked_image * jnp.arange(image.shape[1])[None, :, None])
+                / total_mass,
+                jnp.sum(masked_image * jnp.arange(image.shape[2])[None, None, :])
+                / total_mass,
+            ]
+        )
 
         return coords
+
     centroids: Float[Array, "n 3"] = jax.vmap(centroid)(jnp.arange(1, num_labels + 1))
     return centroids
+
 
 @jaxtyped(typechecker=beartype)
 def find_particle_coords(
@@ -218,6 +226,7 @@ def find_particle_coords(
     labels, num_labels = cb.find_connected_components(binary)
     coords: Float[Array, "n 3"] = cb.center_of_mass_3d(results_3D, labels, num_labels)
     return coords
+
 
 @jaxtyped(typechecker=beartype)
 def preprocessing(

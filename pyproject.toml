@@ -29,6 +29,8 @@ dependencies = [
     "jaxtyping >= 0.2.33, < 0.3",
     "beartype",
     "pandas>=2.2.3",
+    "chex>=0.1.89",
+    "pytest>=8.3.5",
 ]
 
 [project.urls]
