@@ -69,8 +69,8 @@ def adaptive_wiener(
         target: Float[Array, "h w"],
         kernel_size: Union[int, Tuple[int, int]],
     ) -> scalar_float:
-        filtered_img = cb.wiener(img, kernel_size, noise)
-        loss = jnp.mean((filtered_img - target) ** 2)
+        filtered_img: Float[Array, "h w"] = cb.wiener(img, kernel_size, noise)
+        loss: scalar_float = jnp.mean((filtered_img - target) ** 2)
         return loss
 
     def step(noise: scalar_float, _) -> Tuple[scalar_float, None]:

@@ -310,10 +310,10 @@ def difference_of_gaussians(
 @jaxtyped(typechecker=beartype)
 def laplacian_of_gaussian(
     image: Real[Array, "y x"],
-    standard_deviation: scalar_num = 3,
-    hist_stretch: bool = True,
-    sampling: scalar_num = 1,
-    normalized: bool = True,
+    standard_deviation: Optional[scalar_num] = 3,
+    hist_stretch: Optional[bool] = True,
+    sampling: Optional[scalar_num] = 1,
+    normalized: Optional[bool] = True,
 ) -> Float[Array, "y x"]:
     """
     Description
@@ -381,9 +381,9 @@ def laplacian_of_gaussian(
 
 @jaxtyped(typechecker=beartype)
 def laplacian_kernel(
-    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
-    size: scalar_int = 3,
-    sigma: scalar_float = 1.0,
+    mode: Optional[Literal["basic", "diagonal", "gaussian"]] = "basic",
+    size: Optional[scalar_int] = 3,
+    sigma: Optional[scalar_float] = 1.0,
 ) -> Float[Array, "size size"]:
     """
     Description
@@ -392,15 +392,16 @@ def laplacian_kernel(
 
     Parameters
     ----------
-    - `mode` (Literal):
+    - `mode` (Literal, optional):
         The type of Laplacian kernel to create:
         - "basic": Standard 4-connected Laplacian (fixed size=3)
         - "diagonal": 8-connected Laplacian (fixed size=3)
         - "gaussian": Laplacian of Gaussian (LoG), size and sigma are used.
-    - `size` (scalar_int):
+        Default is "basic".
+    - `size` (scalar_int, optional):
         Kernel size, enforced positive and odd for 'gaussian' mode.
         Default is 3.
-    - `sigma` (scalar_float):
+    - `sigma` (scalar_float, optional):
         Gaussian standard deviation for LoG kernel. Default is 1.0.
 
     Returns
