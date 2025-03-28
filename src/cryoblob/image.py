@@ -418,7 +418,7 @@ def laplacian_kernel(
     ) -> Float[Array, "size size"]:
         return jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
 
-    def gaussian_kernel(
+    def gauss_kernel(
         params: tuple[scalar_int, scalar_float],
     ) -> Float[Array, "size size"]:
         kernel_size, kernel_sigma = params
@@ -441,7 +441,7 @@ def laplacian_kernel(
 
     kernel = jax.lax.switch(
         (mode == "basic") * 0 + (mode == "diagonal") * 1 + (mode == "gaussian") * 2,
-        [basic_kernel, diagonal_kernel, gaussian_kernel],
+        [basic_kernel, diagonal_kernel, gauss_kernel],
         (size, sigma),
     )
 
@@ -479,7 +479,7 @@ def perona_malik(
     num_iter: scalar_int,
     kappa: scalar_float,
     gamma: Optional[scalar_float] = 0.1,
-    conduction_fn: Optional[Callable] = cb.exponential_kernel,
+    conduction_fn: Optional[Callable] = exponential_kernel,
 ) -> Float[Array, "H W"]:
     """
     Perform edge-preserving denoising using the Perona-Malik anisotropic diffusion.
