@@ -80,6 +80,11 @@ target/
 # Emacs
 .#*
 
+# UV/Ruff
+.ruff_cache/
+.venv/
+.vscode/
+
 # Notebook Checkpoints
 .ipynb_checkpoints/
 /src/.ipynb_checkpoints/
