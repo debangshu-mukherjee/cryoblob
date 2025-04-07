@@ -408,10 +408,7 @@ def laplacian_kernel(
         r2 = x**2 + y**2
         gaussian = jnp.exp(-r2 / (2 * sigma**2))
         kernel = (
-            -1.0
-            / (jnp.pi * sigma**4)
-            * (1 - r2 / (2 * sigma**2))
-            * gaussian
+            -1.0 / (jnp.pi * sigma**4) * (1 - r2 / (2 * sigma**2)) * gaussian
         ).astype(jnp.float32)
     else:
         raise ValueError(f"Unknown mode: {mode}")
@@ -562,9 +559,9 @@ def histogram(
         ),
         operand=range_limits,
     )
-    hist: Num[Array, "bins"] = jnp.histogram(
-        flat_image, bins=bins, range=range_limits
-    )[0]
+    hist: Num[Array, "bins"] = jnp.histogram(flat_image, bins=bins, range=range_limits)[
+        0
+    ]
     return hist
 
 
@@ -598,12 +595,12 @@ def equalize_hist(
     img_min: scalar_float = jnp.amin(image)
     img_range: scalar_float = jnp.amax(image) - img_min
     normalized: Float[Array, "h w"] = (image - img_min) / jnp.maximum(img_range, 1e-8)
-    
+
     flat_normalized: Real[Array, "h*w"] = normalized.ravel()
     flat_mask_default: Bool[Array, "h*w"] = jnp.ones_like(flat_normalized, dtype=bool)
-    
+
     has_mask: bool = mask is not None
-    
+
     safe_mask: Bool[Array, "h*w"] = jax.lax.cond(
         has_mask,
         lambda m: m.ravel().astype(bool),
@@ -612,11 +609,11 @@ def equalize_hist(
     )
 
     masked_pixels = jnp.where(safe_mask, flat_normalized, -1.0)
-    
+
     hist: Num[Array, "bins"] = histogram(
         masked_pixels, bins=nbins, range_limits=(0.0, 1.0)
     )
-    
+
     hist = jnp.where(hist < 0, 0, hist)
     cdf: Float[Array, "bins"] = jnp.cumsum(hist).astype(jnp.float32)
     cdf = cdf / jnp.maximum(cdf[-1], 1e-8)
@@ -630,7 +627,9 @@ def equalize_hist(
         frac: scalar_float = v * (nbins - 1) - bin_idx
         return (1 - frac) * cdf_left + frac * cdf_right
 
-    equalized: Float[Array, "h w"] = jax.vmap(interp)(flat_normalized).reshape(image.shape)
+    equalized: Float[Array, "h w"] = jax.vmap(interp)(flat_normalized).reshape(
+        image.shape
+    )
     equalized = jnp.where(safe_mask.reshape(image.shape), equalized, normalized)
 
     return equalized

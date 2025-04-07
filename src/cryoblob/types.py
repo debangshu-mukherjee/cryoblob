@@ -34,6 +34,7 @@ scalar_int: TypeAlias = Union[int, Integer[Array, ""]]
 scalar_num: TypeAlias = Union[int, float, Num[Array, ""]]
 non_jax_number: TypeAlias = Union[int, float]
 
+
 @register_pytree_node_class
 class MRC_Image(NamedTuple):
     """

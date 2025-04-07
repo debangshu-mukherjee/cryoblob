@@ -1,3 +1,5 @@
+# Minimal Makefile for building Sphinx documentation locally.
+
 SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 SOURCEDIR     = source
