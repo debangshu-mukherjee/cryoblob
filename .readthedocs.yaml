@@ -12,19 +12,3 @@ python:
   install:
     - method: pip
       path: .
-      extra_requirements:
-        - docs
-      packages:
-        - sphinx
-        - sphinx-rtd-theme
-        - nbsphinx
-        - nbconvert
-        - ipykernel
-        - jax[cpu]
-        - jaxtyping
-        - beartype
-        - numpy
-        - matplotlib
-        - pandas
-        - mrcfile
-        - scipy
