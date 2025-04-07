@@ -17,6 +17,9 @@ Submodules
     Interfacing with data files.
 - `image`:
     Utility functions for image processing.
+- `plots`:
+    Plotting functions for visualizing MRC images
+    and blob detection results.
 - `types`:
     Type aliases and PyTrees.
 """
@@ -25,4 +28,5 @@ from .adapt import *
 from .blobs import *
 from .files import *
 from .image import *
+from .plots import *
 from .types import *

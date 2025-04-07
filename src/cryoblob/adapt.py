@@ -15,15 +15,14 @@ Functions
     to produce a differentiably thresholded image.
 """
 
+import cryoblob as cb
 import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple, Union
+from cryoblob.types import *
 from jax import lax
 from jaxtyping import Array, Float, jaxtyped
-
-import cryoblob as cb
-from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 

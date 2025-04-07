@@ -24,18 +24,17 @@ import json
 import os
 from importlib.resources import files
 
+import cryoblob as cb
 import jax
 import jax.numpy as jnp
 import mrcfile
 import numpy as np
 import pandas as pd
 from beartype.typing import Dict, List, Literal, Tuple
+from cryoblob.types import *
 from jax import device_get, device_put, vmap
 from jaxtyping import Array, Float
 from tqdm.auto import tqdm
-
-import cryoblob as cb
-from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -62,9 +61,81 @@ def file_params() -> Tuple[str, dict]:
     listring.insert(0, "")
     main_directory: str = "/".join(listring)
     folder_structure: dict = json.load(
-        open(files("arm_em.params").joinpath("organization.json"))
+        open(files("cryoblob.params").joinpath("organization.json"))
     )
     return (main_directory, folder_structure)
+
+
+def load_mrc(filepath: str) -> MRC_Image:
+    """
+    Description
+    -----------
+    Reads an MRC-format cryo-EM file from the specified path, extracting
+    image data and relevant metadata. All numeric data are converted into
+    JAX arrays and wrapped into a structured `MRC_Image` PyTree, compatible
+    with JAX's functional programming paradigm.
+
+    Parameters
+    ----------
+    - `filepath` (str):
+        Path to the MRC file to be loaded.
+
+    Returns
+    -------
+    `MRC_Image` (A PyTree containing):
+        - `image_data`: Image array (2D or 3D).
+        - `voxel_size`: Array containing voxel dimensions in
+            Å (Z, Y, X).
+        - `origin`: Array indicating the origin coordinates from the
+            header (Z, Y, X).
+        - `data_min`: Minimum pixel value.
+        - `data_max`: Maximum pixel value.
+        - `data_mean`: Mean pixel value.
+        - `mode`: Integer code representing data type
+            (e.g., 0=int8, 1=int16, 2=float32).
+
+    Examples
+    --------
+    >>> mrc_image = load_mrc("example.mrc")
+    >>> print(mrc_image.voxel_size)
+    Array([1.2, 1.2, 1.2], dtype=float32)
+
+    Notes
+    -----
+    - This function uses the `mrcfile` library for parsing MRC files.
+    - The resulting PyTree structure (`MRC_Image`) is explicitly
+        designed for use in JAX-based image processing pipelines.
+
+    """
+    with mrcfile.open(filepath, permissive=True) as mrc:
+        data = jnp.array(mrc.data)
+        voxel_size = jnp.array(
+            [
+                float(mrc.voxel_size.z),
+                float(mrc.voxel_size.y),
+                float(mrc.voxel_size.x),
+            ]
+        )
+        origin = jnp.array(
+            [
+                float(mrc.header.origin.z),
+                float(mrc.header.origin.y),
+                float(mrc.header.origin.x),
+            ]
+        )
+        data_min = jnp.array(mrc.header.dmin)
+        data_max = jnp.array(mrc.header.dmax)
+        data_mean = jnp.array(mrc.header.dmean)
+        mode = jnp.array(mrc.header.mode)
+    return MRC_Image(
+        image_data=data,
+        voxel_size=voxel_size,
+        origin=origin,
+        data_min=data_min,
+        data_max=data_max,
+        data_mean=data_mean,
+        mode=mode,
+    )
 
 
 def process_single_file(

@@ -12,7 +12,6 @@ jax.config.update("jax_enable_x64", True)
 from cryoblob.adapt import *
 from cryoblob.types import *
 
-
 if __name__ == "__main__":
     pytest.main([__file__])
 

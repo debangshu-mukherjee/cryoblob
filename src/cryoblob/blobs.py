@@ -21,15 +21,14 @@ Functions
     Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
 """
 
+import cryoblob as cb
 import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple
+from cryoblob.types import *
 from jax import lax
 from jaxtyping import Array, Bool, Float, jaxtyped
-
-import cryoblob as cb
-from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -60,8 +59,6 @@ def find_connected_components(
         Number of connected components found
     """
     shape = binary_image.shape
-
-    # Initialize labels with sequential numbers for non-zero pixels
     initial_labels = jnp.where(
         binary_image > 0, jnp.arange(1, binary_image.size + 1).reshape(shape), 0
     )
@@ -69,9 +66,7 @@ def find_connected_components(
     def get_neighbors(pos, labels):
         x, y, z = pos
         neighbors = []
-
         if connectivity == 6:
-            # 6-connectivity: face neighbors
             offsets = [
                 (-1, 0, 0),
                 (1, 0, 0),
@@ -81,7 +76,6 @@ def find_connected_components(
                 (0, 0, 1),
             ]
         else:
-            # 26-connectivity: include diagonal neighbors
             offsets = [
                 (dx, dy, dz)
                 for dx in [-1, 0, 1]
@@ -89,12 +83,10 @@ def find_connected_components(
                 for dz in [-1, 0, 1]
                 if not (dx == dy == dz == 0)
             ]
-
         for dx, dy, dz in offsets:
             nx, ny, nz = x + dx, y + dy, z + dz
             if 0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2]:
                 neighbors.append(labels[nx, ny, nz])
-
         return jnp.array(neighbors)
 
     def update_label(old_label, new_label, labels):
@@ -116,7 +108,6 @@ def find_connected_components(
         labels, _ = lax.scan(scan_fn, labels, positions)
         return labels
 
-    # Iterative merging until convergence
     def cond_fn(state):
         prev_labels, curr_labels, _ = state
         return jnp.any(prev_labels != curr_labels)
@@ -126,20 +117,13 @@ def find_connected_components(
         new_labels = merge_components(curr_labels)
         return curr_labels, new_labels, i + 1
 
-    # Run until convergence
     final_labels, _, _ = lax.while_loop(
         cond_fn, body_fn, (initial_labels, initial_labels, 0)
     )
-
-    # Relabel components to be sequential
     unique_labels = jnp.unique(final_labels)
-    num_labels: scalar_int = len(unique_labels) - 1  # subtract 1 for background
-
-    # Create mapping for sequential labels
+    num_labels: scalar_int = len(unique_labels) - 1
     label_map = jnp.zeros(jnp.max(unique_labels) + 1, dtype=jnp.int32)
     label_map = label_map.at[unique_labels].set(jnp.arange(len(unique_labels)))
-
-    # Apply mapping
     sequential_labels = label_map[final_labels]
 
     return sequential_labels, num_labels
@@ -353,7 +337,6 @@ def blob_list(
     2. Processes the 2D projection for blob detection
     3. Returns coordinates in the 2D projection space
     """
-    # Handle 3D input by summing along last axis
     if image.ndim == 3:
         image = jnp.sum(image, axis=-1)
 
@@ -370,7 +353,7 @@ def blob_list(
         in_axes=(
             None,
             0,
-        ),  # First arg (image) is broadcasted, second arg (sigma) is mapped
+        ),
     )
     results_3D: Float[Array, "e f r"] = vectorized_log(
         scaled_image, peak_range
@@ -380,9 +363,9 @@ def blob_list(
         results_3D,
         init_value=-jnp.inf,
         computation_fn=lax.max,
-        window_dimensions=(4, 4, 4),  # 3D window size
-        window_strides=(1, 1, 1),  # stride of 1 in each dimension
-        padding="SAME",  # to match scipy's behavior
+        window_dimensions=(4, 4, 4),
+        window_strides=(1, 1, 1),
+        padding="SAME",
     )
 
     image_thresh: Float[Array, "e f r"] = jnp.mean(max_filtered) + (
@@ -391,8 +374,8 @@ def blob_list(
     coords = cb.find_particle_coords(results_3D, max_filtered, image_thresh)
     scaled_coords: Float[Array, "labels 3"] = jnp.concatenate(
         [
-            downscale * coords[:, 0:2],  # x, y coordinates
-            downscale * ((blob_step * coords[:, -1:]) + min_blob_size),  # z coordinate
+            downscale * coords[:, 0:2],
+            downscale * ((blob_step * coords[:, -1:]) + min_blob_size),
         ],
         axis=1,
     )

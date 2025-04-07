@@ -36,16 +36,15 @@ Functions:
     Perform Wiener filtering on an image using JAX.
 """
 
+import cryoblob as cb
 import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Callable, Literal, Optional, Tuple, Union
+from cryoblob.types import *
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
-
-import cryoblob as cb
-from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -53,7 +52,7 @@ jax.config.update("jax_enable_x64", True)
 @jaxtyped(typechecker=beartype)
 def image_resizer(
     orig_image: Union[Real[Array, "y x"], Real[Array, "y x c"]],
-    new_sampling: Union[Real[Array, ""], Real[Array, "2"]],
+    new_sampling: Union[scalar_num, Real[Array, "2"]],
 ) -> Float[Array, "a b"]:
     """
     Description
@@ -65,7 +64,7 @@ def image_resizer(
     ----------
     - `orig_image` (Real[Array, "y x"] | Real[Array, "y x c"]):
         The original image to be resized. It should be a 2D JAX array or 3D stack.
-    - `new_sampling` (Real[Array, ""] | Real[Array, "2"]):
+    - `new_sampling` (scalar_num | Real[Array, "2"]):
         The new sampling rate for resizing the image. It can be a single
         float value or a tuple of two float values representing the sampling
         rates for the x and y axes respectively.
