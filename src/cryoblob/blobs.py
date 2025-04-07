@@ -17,20 +17,19 @@ Functions
     Find particle coordinates using connected components and center of mass.
 - `preprocessing`:
     Pre-processes low SNR images to improve contrast of blobs.
-- `blob_list`:
+- `blob_list_log`:
     Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
 """
 
-import cryoblob as cb
 import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple
-from cryoblob.types import *
 from jax import lax
 from jaxtyping import Array, Bool, Float, jaxtyped
 
-jax.config.update("jax_enable_x64", True)
+import cryoblob as cb
+from cryoblob.types import *
 
 
 @jaxtyped(typechecker=beartype)
@@ -287,95 +286,74 @@ def preprocessing(
 
 
 @jaxtyped(typechecker=beartype)
-def blob_list(
-    image: Float[Array, "a b"] | Float[Array, "a b c"],
+def blob_list_log(
+    mrc_image: MRC_Image,
     min_blob_size: Optional[scalar_num] = 10,
     max_blob_size: Optional[scalar_num] = 100,
     blob_step: Optional[scalar_num] = 2,
-    downscale: Optional[scalar_num] = 2,
+    downscale: Optional[scalar_num] = 4,
     std_threshold: Optional[scalar_num] = 6,
-) -> Float[Array, "a 3"]:
+) -> Float[Array, "n 3"]:
     """
     Description
     -----------
-    Detects blobs in an input image using the Laplacian of Gaussian (LoG) method.
-    If input is 3D, sums along the last axis before processing.
+    Detect blobs of varying sizes in an MRC image using the Laplacian of Gaussian (LoG) method.
 
-    Args
-    ----
-    - `image` (Float[Array, "a b"] | Float[Array, "a b c"]):
-        A 2D or 3D array representing the input image.
-        If 3D, will be summed along the last axis.
-    - `min_blob_size` (Num[Array, ""], optional):
-        The minimum size of the blobs to be detected.
-        Defaults to 10.
-    - `max_blob_size` (Num[Array, ""], optional):
-        The maximum size of the blobs to be detected.
-        Defaults to 100.
-    - `blob_step` (Num[Array, ""], optional):
-        The step size for iterating over different blob sizes.
-        Defaults to 2.
-    - `downscale` (Num[Array, ""], optional):
-        The factor by which the image is downscaled before blob detection.
-        Defaults to 2.
-    - `std_threshold` (Num[Array, ""], optional):
-        The threshold for blob detection based on standard deviation.
-        Defaults to 6.
+    Parameters
+    ----------
+    - `mrc_image` (MRC_Image):
+        The PyTree containing the image data and metadata.
+    - `min_blob_size` (scalar_num, optional):
+        Minimum blob size to detect. Defaults to 10.
+    - `max_blob_size` (scalar_num, optional):
+        Maximum blob size to detect. Defaults to 100.
+    - `blob_step` (scalar_num, optional):
+        Step size between consecutive blob scales. Defaults to 2.
+    - `downscale` (scalar_num, optional):
+        Factor by which the image is downscaled before detection.
+        Defaults to 4.
+    - `std_threshold` (scalar_num, optional):
+        Threshold in standard deviations for blob detection. Defaults to 6.
 
     Returns
     -------
-    - `scaled_coords` (Float[Array, "labels 3"]):
-        A 2D array containing the coordinates of the detected blobs. Each row
-        represents the coordinates of a blob, with the first two columns
-        representing the x and y coordinates, and the last column
-        representing the size of the blob.
-
-    Notes
-    -----
-    For 3D inputs, the function:
-    1. Sums along the last axis to create a 2D projection
-    2. Processes the 2D projection for blob detection
-    3. Returns coordinates in the 2D projection space
+    - `scaled_coords` (Float[Array, "n 3"]):
+        Array of blob coordinates and sizes, shape [n, 3].
+        Columns represent (Y, X, Blob size in pixels).
     """
-    if image.ndim == 3:
-        image = jnp.sum(image, axis=-1)
-
-    peak_range: Float[Array, "c"] = jnp.arange(
-        start=min_blob_size, stop=max_blob_size, step=blob_step
+    image: Float[Array, "H W"] = (mrc_image.image_data).astype(jnp.float32)
+    voxel_size: Float[Array, "3"] = mrc_image.voxel_size
+    peak_range: Float[Array, "scales"] = jnp.arange(
+        min_blob_size, max_blob_size, blob_step
     )
-    scaled_image: Float[Array, "e f"] = cb.fast_resizer(image, (1 / downscale))
+    scaled_image: Float[Array, "h w"] = cb.image_resizer(image, downscale)
 
-    if jnp.amin(x=jnp.asarray(jnp.shape(scaled_image))) < 20:
-        raise ValueError("Image is too small for blob detection")
+    def apply_log(img, sigma):
+        return cb.laplacian_of_gaussian(img, standard_deviation=sigma)
 
-    vectorized_log = jax.vmap(
-        cb.laplacian_gaussian,
-        in_axes=(
-            None,
-            0,
-        ),
-    )
-    results_3D: Float[Array, "e f r"] = vectorized_log(
+    results_3D: Float[Array, "scales h w"] = jax.vmap(apply_log, in_axes=(None, 0))(
         scaled_image, peak_range
-    ).transpose(1, 2, 0)
-
-    max_filtered: Float[Array, "e f r"] = lax.reduce_window(
+    )
+    results_3D = results_3D.transpose(1, 2, 0)
+    max_filtered: Float[Array, "h w scales"] = jax.lax.reduce_window(
         results_3D,
         init_value=-jnp.inf,
-        computation_fn=lax.max,
+        computation_fn=jax.lax.max,
         window_dimensions=(4, 4, 4),
         window_strides=(1, 1, 1),
         padding="SAME",
     )
-
-    image_thresh: Float[Array, "e f r"] = jnp.mean(max_filtered) + (
-        std_threshold * jnp.std(max_filtered)
+    mean_val: scalar_float = jnp.mean(max_filtered)
+    std_val: scalar_float = jnp.std(max_filtered)
+    image_thresh: scalar_float = mean_val + std_threshold * std_val
+    coords: Float[Array, "n 3"] = cb.find_particle_coords(
+        results_3D, max_filtered, image_thresh
     )
-    coords = cb.find_particle_coords(results_3D, max_filtered, image_thresh)
-    scaled_coords: Float[Array, "labels 3"] = jnp.concatenate(
+    scaled_coords: Float[Array, "n 3"] = jnp.concatenate(
         [
-            downscale * coords[:, 0:2],
-            downscale * ((blob_step * coords[:, -1:]) + min_blob_size),
+            downscale * coords[:, :2] * voxel_size[1:][::-1],
+            (coords[:, 2:] * blob_step + min_blob_size)[:, None]
+            * jnp.sqrt(voxel_size[1] * voxel_size[2]),
         ],
         axis=1,
     )

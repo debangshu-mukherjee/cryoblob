@@ -24,17 +24,18 @@ import json
 import os
 from importlib.resources import files
 
-import cryoblob as cb
 import jax
 import jax.numpy as jnp
 import mrcfile
 import numpy as np
 import pandas as pd
 from beartype.typing import Dict, List, Literal, Tuple
-from cryoblob.types import *
 from jax import device_get, device_put, vmap
 from jaxtyping import Array, Float
 from tqdm.auto import tqdm
+
+import cryoblob as cb
+from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 

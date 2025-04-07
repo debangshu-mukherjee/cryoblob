@@ -36,15 +36,16 @@ Functions:
     Perform Wiener filtering on an image using JAX.
 """
 
-import cryoblob as cb
 import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Callable, Literal, Optional, Tuple, Union
-from cryoblob.types import *
 from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
+
+import cryoblob as cb
+from cryoblob.types import *
 
 jax.config.update("jax_enable_x64", True)
 
@@ -68,6 +69,9 @@ def image_resizer(
         The new sampling rate for resizing the image. It can be a single
         float value or a tuple of two float values representing the sampling
         rates for the x and y axes respectively.
+        - If a single value is provided, it will be applied to both axes.
+        - If `new_sampling` is greater than 1, the image will be downsampled.
+        - If `new_sampling` is less than 1, the image will be upsampled.
 
     Returns
     -------
@@ -307,6 +311,7 @@ def difference_of_gaussians(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def laplacian_of_gaussian(
     image: Real[Array, "y x"],
     standard_deviation: Optional[scalar_num] = 3,
@@ -324,6 +329,7 @@ def laplacian_of_gaussian(
         Input 2D image.
     - `standard_deviation` (scalar_num, optional):
         Standard deviation of the Gaussian filter. Default is 3.
+        Maximum must be loweer than 50.
     - `hist_stretch` (bool, optional):
         If True, apply histogram stretching. Default is True.
     - `normalized` (bool, optional):
@@ -343,74 +349,75 @@ def laplacian_of_gaussian(
     - Convolve the image with LoG kernel.
     - Normalize output if required.
     """
-    kernel_size: int = int(max(3, (round(standard_deviation * 6) // 2) * 2 + 1))
+    kerneL_extent: scalar_int = ((jnp.multiply(jnp.round(standard_deviation), 3) // 2)*2) + 1
+    kernel_size: int = 101
+    coords: Float[Array, "kernel_size"] = jnp.arange(-kernel_size, kernel_size, 1)
+    x: Float[Array, "kernel_size kernel_size"]
+    y: Float[Array, "kernel_size kernel_size"]
+    x, y = jnp.meshgrid(coords, coords)
+    r2: Float[Array, "kernel_size kernel_size"] = (x**2) + (y**2)
+    gaussian: Float[Array, "kernel_size kernel_size"] = jnp.exp(
+        -r2 / (2 * standard_deviation**2)
+    )
+    kernel_arr: Float[Array, "kernel_size kernel_size"] = (
+        -1.0
+        / (jnp.pi * standard_deviation**4)
+        * (1 - r2 / (2 * standard_deviation**2))
+        * gaussian
+    )
     sampled_image = jax.lax.cond(
         hist_stretch,
         equalize_hist,
         lambda img: img.astype(jnp.float32),
         image,
     )
-    log_kernel: Float[Array, "kernel_size kernel_size"] = laplacian_kernel(
-        mode="gaussian", size=kernel_size, sigma=standard_deviation
-    )
-    filtered: Float[Array, "y x"] = signal.convolve2d(
-        sampled_image, log_kernel, mode="same"
+    convolved: Float[Array, "y x"] = signal.convolve2d(
+        sampled_image, kernel_arr, mode="same"
     )
     filtered = jax.lax.cond(
         normalized,
         lambda x: x / standard_deviation,
         lambda x: x,
-        filtered,
+        convolved,
     )
     return filtered
 
 
 @jaxtyped(typechecker=beartype)
-def laplacian_kernel(
-    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
-    size: scalar_int = 3,
-    sigma: scalar_num = 1.0,
+def log_kernel(
+    size: int,
+    sigma: scalar_num,
+    kernel_min: Optional[int] = 3,
 ) -> Float[Array, "size size"]:
     """
     Description
     -----------
-    Create a Laplacian kernel for edge detection in a JAX-compatible manner.
+    Create a Laplacian of Gaussian kernel for edge detection.
 
     Parameters
     ----------
-    - `mode` (Literal, optional):
-        The type of Laplacian kernel to create:
-        - "basic": Standard 4-connected Laplacian (fixed size=3)
-        - "diagonal": 8-connected Laplacian (fixed size=3)
-        - "gaussian": Laplacian of Gaussian (LoG), size and sigma are used.
-        Default is "basic".
-    - `size` (scalar_int, optional):
+    - `size` (int):
         Kernel size, enforced positive and odd for 'gaussian' mode.
-        Default is 3.
-    - `sigma` (scalar_float, optional):
-        Gaussian standard deviation for LoG kernel. Default is 1.0.
+    - `sigma` (scalar_float):
+        Gaussian standard deviation for LoG kernel.
+    - `kernel_min` (int, optional):
+        Maximum kernel size (default is 3).
+        This is used to enforce minimum kernel size.
 
     Returns
     -------
     - `kernel` (Float[Array, "size size"]):
         Laplacian kernel.
     """
-    if mode == "basic":
-        kernel = jnp.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32)
-    elif mode == "diagonal":
-        kernel = jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
-    elif mode == "gaussian":
-        kernel_size = int(max(3, (int(size) // 2) * 2 + 1))
-        radius = kernel_size // 2
-        coords = jnp.arange(-radius, radius + 1)
-        x, y = jnp.meshgrid(coords, coords)
-        r2 = x**2 + y**2
-        gaussian = jnp.exp(-r2 / (2 * sigma**2))
-        kernel = (
-            -1.0 / (jnp.pi * sigma**4) * (1 - r2 / (2 * sigma**2)) * gaussian
-        ).astype(jnp.float32)
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+    kernel_size: int = max(kernel_min, (size // 2) * 2 + 1)
+    radius: int = kernel_size // 2
+    coords: Float[Array, "size"] = jnp.arange(-radius, radius + 1, dtype=jnp.float32)
+    x, y = jnp.meshgrid(coords, coords, indexing="ij")
+    r2: Float[Array, "size size"] = (x**2) + (y**2)
+    gaussian: Float[Array, "size size"] = jnp.exp(-r2 / (2 * sigma**2))
+    kernel: Float[Array, "size size"] = (
+        -1.0 / (jnp.pi * sigma**4) * (1 - r2 / (2 * sigma**2)) * gaussian
+    )
     return kernel
 
 

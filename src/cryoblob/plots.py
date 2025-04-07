@@ -19,17 +19,18 @@ import matplotlib_scalebar.scalebar as sb
 import numpy as np
 from beartype import beartype
 from beartype.typing import Optional, Tuple
-from cryoblob.types import *
 from jaxtyping import Array, Float
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+
+from cryoblob.types import *
 
 
 @beartype
 def plot_mrc(
     mrc_image: MRC_Image,
     image_size: Optional[Tuple[scalar_int, scalar_int]] = (15, 15),
-    cmap: Optional[str] = "viridis",
+    cmap: Optional[str] = "magma",
     mode: Optional[str] = "plain",
 ) -> None:
     """

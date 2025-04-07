@@ -37,6 +37,7 @@ dependencies = [
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=3.0.2",
     "build>=1.2.2.post1",
+    "black[jupyter]>=25.1.0",
 ]
 
 [project.urls]
