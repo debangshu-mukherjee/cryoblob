@@ -312,7 +312,6 @@ def laplacian_of_gaussian(
     image: Real[Array, "y x"],
     standard_deviation: Optional[scalar_num] = 3,
     hist_stretch: Optional[bool] = True,
-    sampling: Optional[scalar_num] = 1,
     normalized: Optional[bool] = True,
 ) -> Float[Array, "y x"]:
     """
@@ -328,8 +327,6 @@ def laplacian_of_gaussian(
         Standard deviation of the Gaussian filter. Default is 3.
     - `hist_stretch` (bool, optional):
         If True, apply histogram stretching. Default is True.
-    - `sampling` (scalar_num, optional):
-        Downsampling factor; 1 means no resizing. Default is 1.
     - `normalized` (bool, optional):
         If True, normalize filtered output by the standard deviation.
         Default is True.
@@ -347,24 +344,14 @@ def laplacian_of_gaussian(
     - Convolve the image with LoG kernel.
     - Normalize output if required.
     """
-    resize_factor: scalar_float = 1.0 / sampling
-    resize_needed: bool = sampling != 1
-    sampled_image: Float[Array, "y x"] = jax.lax.cond(
-        resize_needed,
-        lambda img: cb.image_resizer(img, resize_factor),
-        lambda img: jnp.asarray(img, dtype=jnp.float64),
-        image,
-    )
+    kernel_size: int = int(max(3, (round(standard_deviation * 6) // 2) * 2 + 1))
     sampled_image = jax.lax.cond(
         hist_stretch,
-        cb.equalize_hist,
-        lambda img: img,
-        sampled_image,
+        equalize_hist,
+        lambda img: img.astype(jnp.float32),
+        image,
     )
-    kernel_size: scalar_int = jnp.maximum(
-        3, (jnp.round(standard_deviation * 6) // 2) * 2 + 1
-    )
-    log_kernel: Float[Array, "kernel_size kernel_size"] = cb.laplacian_kernel(
+    log_kernel: Float[Array, "kernel_size kernel_size"] = laplacian_kernel(
         mode="gaussian", size=kernel_size, sigma=standard_deviation
     )
     filtered: Float[Array, "y x"] = signal.convolve2d(
@@ -381,9 +368,9 @@ def laplacian_of_gaussian(
 
 @jaxtyped(typechecker=beartype)
 def laplacian_kernel(
-    mode: Optional[Literal["basic", "diagonal", "gaussian"]] = "basic",
-    size: Optional[scalar_int] = 3,
-    sigma: Optional[scalar_float] = 1.0,
+    mode: Literal["basic", "diagonal", "gaussian"] = "basic",
+    size: scalar_int = 3,
+    sigma: scalar_num = 1.0,
 ) -> Float[Array, "size size"]:
     """
     Description
@@ -409,42 +396,25 @@ def laplacian_kernel(
     - `kernel` (Float[Array, "size size"]):
         Laplacian kernel.
     """
-
-    def basic_kernel(_: tuple[scalar_int, scalar_float]) -> Float[Array, "size size"]:
-        return jnp.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32)
-
-    def diagonal_kernel(
-        _: tuple[scalar_int, scalar_float],
-    ) -> Float[Array, "size size"]:
-        return jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
-
-    def gauss_kernel(
-        params: tuple[scalar_int, scalar_float],
-    ) -> Float[Array, "size size"]:
-        kernel_size, kernel_sigma = params
-        kernel_size = jnp.maximum(3, (kernel_size // 2) * 2 + 1)
+    if mode == "basic":
+        kernel = jnp.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=jnp.float32)
+    elif mode == "diagonal":
+        kernel = jnp.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=jnp.float32)
+    elif mode == "gaussian":
+        kernel_size = int(max(3, (int(size) // 2) * 2 + 1))
         radius = kernel_size // 2
-
         coords = jnp.arange(-radius, radius + 1)
         x, y = jnp.meshgrid(coords, coords)
-
         r2 = x**2 + y**2
-        gaussian = jnp.exp(-r2 / (2 * kernel_sigma**2))
-
+        gaussian = jnp.exp(-r2 / (2 * sigma**2))
         kernel = (
             -1.0
-            / (jnp.pi * kernel_sigma**4)
-            * (1 - r2 / (2 * kernel_sigma**2))
+            / (jnp.pi * sigma**4)
+            * (1 - r2 / (2 * sigma**2))
             * gaussian
-        )
-        return kernel
-
-    kernel = jax.lax.switch(
-        (mode == "basic") * 0 + (mode == "diagonal") * 1 + (mode == "gaussian") * 2,
-        [basic_kernel, diagonal_kernel, gauss_kernel],
-        (size, sigma),
-    )
-
+        ).astype(jnp.float32)
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
     return kernel
 
 
@@ -558,40 +528,43 @@ def perona_malik(
 
 @jaxtyped(typechecker=beartype)
 def histogram(
-    image: Real[Array, "h w"],
+    image: Real[Array, "..."],
     bins: Optional[scalar_int] = 256,
     range_limits: Optional[Tuple[scalar_float, scalar_float]] = None,
-) -> Integer[Array, "bins"]:
+) -> Num[Array, "bins"]:
     """
-    Description
-    -----------
-    Calculate the histogram of an image.
+    Calculate histogram from input image data.
 
     Parameters
     ----------
-    - `image` (Real[Array, "h w"]):
-        Input image
+    - `image` (Real[Array, "..."]):
+        Input array (any shape), flattened internally.
     - `bins` (scalar_int, optional):
-        Number of bins for the histogram. Default is 256
+        Number of histogram bins.
     - `range_limits` (Tuple[scalar_float, scalar_float], optional):
-        The lower and upper range of the bins.
-        Default is None, which use the minimum and maximum values
-        of the image.
+        Min and max range for bins.
 
     Returns
     -------
-    - `hist` (Integer[Array, "bins"]):
-        The histogram of the image
+    - `hist` (Num[Array, "bins"]):
+        Histogram counts per bin.
     """
+    flat_image: Real[Array, "n"] = image.ravel()
     range_limits: Tuple[scalar_float, scalar_float] = jax.lax.cond(
         range_limits is None,
-        lambda _: (float(image.min()), float(image.max())),
-        lambda rl: rl,
+        lambda _: (
+            flat_image.min().astype(jnp.float32),
+            flat_image.max().astype(jnp.float32),
+        ),
+        lambda rl: (
+            jnp.asarray(rl[0], dtype=jnp.float32),
+            jnp.asarray(rl[1], dtype=jnp.float32),
+        ),
         operand=range_limits,
     )
-    hist: Integer[Array, "bins"] = jnp.histogram(image, bins=bins, range=range_limits)[
-        0
-    ]
+    hist: Num[Array, "bins"] = jnp.histogram(
+        flat_image, bins=bins, range=range_limits
+    )[0]
     return hist
 
 
@@ -625,35 +598,41 @@ def equalize_hist(
     img_min: scalar_float = jnp.amin(image)
     img_range: scalar_float = jnp.amax(image) - img_min
     normalized: Float[Array, "h w"] = (image - img_min) / jnp.maximum(img_range, 1e-8)
-    flat_mask: Bool[Array, "h*w"] = jnp.ravel(jnp.ones_like(normalized, dtype=bool))
-    flat_normalized: Real[Array, "h*w"] = jnp.ravel(normalized)
-    flat_mask, flat_normalized = jax.lax.cond(
-        mask is None,
-        lambda _: (flat_mask, flat_normalized),
-        lambda m: (
-            m.ravel().astype(bool),
-            jnp.compress(m.ravel().astype(bool), flat_normalized),
-        ),
-        operand=mask,
+    
+    flat_normalized: Real[Array, "h*w"] = normalized.ravel()
+    flat_mask_default: Bool[Array, "h*w"] = jnp.ones_like(flat_normalized, dtype=bool)
+    
+    has_mask: bool = mask is not None
+    
+    safe_mask: Bool[Array, "h*w"] = jax.lax.cond(
+        has_mask,
+        lambda m: m.ravel().astype(bool),
+        lambda _: flat_mask_default,
+        operand=mask if has_mask else flat_mask_default,
     )
-    hist: Integer[Array, "bins"] = cb.histogram(
-        flat_normalized, bins=nbins, range_limits=(0.0, 1.0)
-    )
-    cdf: Float[Array, "bins"] = jnp.cumsum(hist).astype(jnp.float32)
-    cdf: Float[Array, "bins"] = cdf / cdf[-1]
 
-    def interp(v: Float[Array, ""]) -> Float[Array, ""]:
-        bin_idx: Integer[Array, ""] = jnp.clip(
+    masked_pixels = jnp.where(safe_mask, flat_normalized, -1.0)
+    
+    hist: Num[Array, "bins"] = histogram(
+        masked_pixels, bins=nbins, range_limits=(0.0, 1.0)
+    )
+    
+    hist = jnp.where(hist < 0, 0, hist)
+    cdf: Float[Array, "bins"] = jnp.cumsum(hist).astype(jnp.float32)
+    cdf = cdf / jnp.maximum(cdf[-1], 1e-8)
+
+    def interp(v: scalar_float) -> scalar_float:
+        bin_idx: scalar_int = jnp.clip(
             jnp.floor(v * (nbins - 1)).astype(jnp.int32), 0, nbins - 2
         )
-        cdf_left: Float[Array, ""] = cdf[bin_idx]
-        cdf_right: Float[Array, ""] = cdf[bin_idx + 1]
-        frac: Float[Array, ""] = v * (nbins - 1) - bin_idx
+        cdf_left: scalar_float = cdf[bin_idx]
+        cdf_right: scalar_float = cdf[bin_idx + 1]
+        frac: scalar_float = v * (nbins - 1) - bin_idx
         return (1 - frac) * cdf_left + frac * cdf_right
 
-    equalized: Float[Array, "h w"] = jax.vmap(interp)(normalized.ravel()).reshape(
-        image.shape
-    )
+    equalized: Float[Array, "h w"] = jax.vmap(interp)(flat_normalized).reshape(image.shape)
+    equalized = jnp.where(safe_mask.reshape(image.shape), equalized, normalized)
+
     return equalized
 
 
