@@ -349,7 +349,9 @@ def laplacian_of_gaussian(
     - Convolve the image with LoG kernel.
     - Normalize output if required.
     """
-    kerneL_extent: scalar_int = ((jnp.multiply(jnp.round(standard_deviation), 3) // 2)*2) + 1
+    kerneL_extent: scalar_int = (
+        (jnp.multiply(jnp.round(standard_deviation), 3) // 2) * 2
+    ) + 1
     kernel_size: int = 101
     coords: Float[Array, "kernel_size"] = jnp.arange(-kernel_size, kernel_size, 1)
     x: Float[Array, "kernel_size kernel_size"]

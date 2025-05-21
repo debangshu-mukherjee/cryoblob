@@ -17,7 +17,7 @@ Types
 - `non_jax_number`:
     A number that is not a JAX array. This is because
     even single number are stored as 0D JAX arrays.
-    
+
 PyTrees
 -------
 - `MRC_Image`:
@@ -25,6 +25,8 @@ PyTrees
     Contains the image data and metadata.
 """
 
+import jax
+import jax.numpy as jnp
 from beartype.typing import NamedTuple, TypeAlias, Union
 from jax.tree_util import register_pytree_node_class
 from jaxtyping import Array, Float, Integer, Num

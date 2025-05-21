@@ -26,15 +26,15 @@ import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple
 from jax import lax
-from jaxtyping import Array, Bool, Float, jaxtyped
+from jaxtyping import Array, Bool, Float, Integer, jaxtyped
 
 import cryoblob as cb
-from cryoblob.types import *
+from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
 
 
 @jaxtyped(typechecker=beartype)
 def find_connected_components(
-    binary_image: Bool[Array, "x y z"], connectivity: int | None = 6
+    binary_image: Bool[Array, "x y z"], connectivity: Optional[int] = 6
 ) -> Tuple[Integer[Array, "x y z"], scalar_int]:
     """
     Description
@@ -214,12 +214,12 @@ def find_particle_coords(
 @jaxtyped(typechecker=beartype)
 def preprocessing(
     image_orig: Float[Array, "y x"],
-    return_params: bool | None = False,
-    exponential: bool | None = True,
-    logarizer: bool | None = False,
-    gblur: int | None = 2,
-    background: int | None = 0,
-    apply_filter: int | None = 0,
+    return_params: Optional[bool] = False,
+    exponential: Optional[bool] = True,
+    logarizer: Optional[bool] = False,
+    gblur: Optional[int] = 2,
+    background: Optional[int] = 0,
+    apply_filter: Optional[int] = 0,
 ) -> Float[Array, "y x"]:
     """
     Description
@@ -288,9 +288,9 @@ def preprocessing(
 @jaxtyped(typechecker=beartype)
 def blob_list_log(
     mrc_image: MRC_Image,
-    min_blob_size: Optional[scalar_num] = 10,
-    max_blob_size: Optional[scalar_num] = 100,
-    blob_step: Optional[scalar_num] = 2,
+    min_blob_size: Optional[scalar_num] = 5,
+    max_blob_size: Optional[scalar_num] = 20,
+    blob_step: Optional[scalar_num] = 1,
     downscale: Optional[scalar_num] = 4,
     std_threshold: Optional[scalar_num] = 6,
 ) -> Float[Array, "n 3"]:
@@ -336,9 +336,9 @@ def blob_list_log(
     )
     results_3D = results_3D.transpose(1, 2, 0)
     max_filtered: Float[Array, "h w scales"] = jax.lax.reduce_window(
-        results_3D,
+        operand=results_3D,
         init_value=-jnp.inf,
-        computation_fn=jax.lax.max,
+        computation=jax.lax.max,
         window_dimensions=(4, 4, 4),
         window_strides=(1, 1, 1),
         padding="SAME",
