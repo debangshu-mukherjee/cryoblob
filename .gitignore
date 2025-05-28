@@ -16,6 +16,8 @@ Notebooks/__pycache__/
 /.pytest_cache/
 /data/cryo_em/
 /data/results/
+/@eaDir/
+@eaDir
 
 # C extensions
 *.so
