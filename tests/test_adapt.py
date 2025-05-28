@@ -1,5 +1,3 @@
-# File: tests/test_adapt.py
-
 import chex
 import jax
 import jax.numpy as jnp

@@ -1,42 +1,33 @@
-"""
-Tests for cryoblob.plots module
-
-This module tests plotting functions for MRC image visualization.
-"""
-
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend for testing
+matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
 import matplotlib_scalebar.scalebar as sb
 import numpy as np
 import jax.numpy as jnp
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import chex
 from absl.testing import parameterized
 
 import cryoblob as cb
-from cryoblob.types import MRC_Image, make_MRC_Image
+from cryoblob.types import make_MRC_Image
 
 
 class TestPlotMRC(chex.TestCase, parameterized.TestCase):
-    """Test MRC image plotting functionality."""
-    
+
     def setUp(self):
         super().setUp()
-        # Create a sample MRC image for testing
         self.sample_data = jnp.linspace(0, 100, 100).reshape(10, 10)
         self.mrc_image = make_MRC_Image(
             image_data=self.sample_data,
-            voxel_size=jnp.array([1.0, 2.0, 2.0]),  # 2 Å per pixel in x and y
+            voxel_size=jnp.array([1.0, 2.0, 2.0]),
             origin=jnp.zeros(3),
             data_min=jnp.min(self.sample_data),
             data_max=jnp.max(self.sample_data),
             data_mean=jnp.mean(self.sample_data),
             mode=2
         )
-        
-        # Create an MRC image with uniform data for edge case testing
+
         self.uniform_data = jnp.ones((20, 20)) * 50
         self.uniform_mrc = make_MRC_Image(
             image_data=self.uniform_data,
@@ -47,43 +38,33 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
             data_mean=50.0,
             mode=2
         )
-    
+
     def tearDown(self):
-        # Close all matplotlib figures after each test
         plt.close('all')
         super().tearDown()
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_basic(self, mock_show):
-        """Test basic MRC plotting functionality."""
-        # Plot the image
         cb.plot_mrc(self.mrc_image)
-        
-        # Check that show was called
+
         mock_show.assert_called_once()
-        
-        # Check that a figure was created
+
         assert len(plt.get_fignums()) > 0
-        
-        # Get the current figure and axes
+
         fig = plt.gcf()
         ax = plt.gca()
-        
-        # Check figure size
+
         assert fig.get_size_inches()[0] == 15
         assert fig.get_size_inches()[1] == 15
-        
-        # Check that axis is turned off
+
         assert not ax.axison
-        
-        # Check that an image was plotted
+
         assert len(ax.images) == 1
-        
-        # Check that scalebar was added
+
         artists = ax.get_children()
         scalebar_found = any(isinstance(artist, sb.ScaleBar) for artist in artists)
         assert scalebar_found
-    
+
     @parameterized.parameters(
         ((10, 10), 'viridis', 'plain'),
         ((20, 20), 'plasma', 'log'),
@@ -92,111 +73,88 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
     )
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_parameters(self, image_size, cmap, mode, mock_show):
-        """Test MRC plotting with different parameters."""
         cb.plot_mrc(
             self.mrc_image,
             image_size=image_size,
             cmap=cmap,
             mode=mode
         )
-        
+
         fig = plt.gcf()
         ax = plt.gca()
-        
-        # Check figure size
+
         assert fig.get_size_inches()[0] == image_size[0]
         assert fig.get_size_inches()[1] == image_size[1]
-        
-        # Check colormap
+
         img = ax.images[0]
         assert img.get_cmap().name == cmap
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_mode_plain(self, mock_show):
-        """Test plain mode plotting."""
         cb.plot_mrc(self.mrc_image, mode='plain')
-        
+
         ax = plt.gca()
         img = ax.images[0]
         img_data = img.get_array()
-        
-        # In plain mode, data should be normalized to [0, 1]
+
         assert np.min(img_data) >= 0
         assert np.max(img_data) <= 1
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_mode_log(self, mock_show):
-        """Test logarithmic mode plotting."""
         cb.plot_mrc(self.mrc_image, mode='log')
-        
+
         ax = plt.gca()
         img = ax.images[0]
         img_data = img.get_array()
-        
-        # In log mode, data should be log(1 + normalized)
-        # So minimum should be log(1) = 0
+
         assert np.min(img_data) >= 0
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_mode_exp(self, mock_show):
-        """Test exponential mode plotting."""
         cb.plot_mrc(self.mrc_image, mode='exp')
-        
+
         ax = plt.gca()
         img = ax.images[0]
         img_data = img.get_array()
-        
-        # In exp mode, data should be exp(normalized)
-        # So minimum should be exp(0) = 1
+
         assert np.min(img_data) >= 1
-    
+
     def test_plot_mrc_invalid_mode(self):
-        """Test error handling for invalid mode."""
         with self.assertRaises(ValueError) as context:
             cb.plot_mrc(self.mrc_image, mode='invalid')
-        
+
         assert "Invalid mode" in str(context.exception)
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_scalebar_properties(self, mock_show):
-        """Test scalebar properties."""
         cb.plot_mrc(self.mrc_image)
-        
+
         ax = plt.gca()
-        
-        # Find the scalebar
+
         scalebar = None
         for artist in ax.get_children():
             if isinstance(artist, sb.ScaleBar):
                 scalebar = artist
                 break
-        
+
         assert scalebar is not None
-        
-        # Check scalebar properties
-        # The scalebar should be in nanometers (10 * voxel_size_x)
-        # voxel_size_x is 2.0 Å, so 10 * 2.0 = 20 Å = 2 nm
-        assert scalebar.dx == 20.0  # 10 * voxel_size_x
+
+        assert scalebar.dx == 20.0
         assert scalebar.units == 'nm'
         assert scalebar.location == 'lower right'
         assert scalebar.color == 'white'
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_uniform_data(self, mock_show):
-        """Test plotting with uniform data (edge case)."""
-        # This tests the edge case where data_min == data_max
         cb.plot_mrc(self.uniform_mrc)
-        
-        # Should not raise an error
+
         ax = plt.gca()
         assert len(ax.images) == 1
-    
+
     @chex.all_variants
     def test_plot_mrc_with_jax_transformations(self):
-        """Test that MRC image data works correctly with JAX transformations."""
-        # This tests that the plotting function correctly handles JAX arrays
         def transform_mrc(mrc):
-            # Apply some transformation to the image data
             new_data = mrc.image_data * 2
             return make_MRC_Image(
                 image_data=new_data,
@@ -207,27 +165,23 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
                 data_mean=jnp.mean(new_data),
                 mode=mrc.mode
             )
-        
+
         transformed_mrc = self.variant(transform_mrc)(self.mrc_image)
-        
-        # Should be able to plot the transformed MRC
+
         with patch('matplotlib.pyplot.show'):
             cb.plot_mrc(transformed_mrc)
-        
-        # Verify plot was created
+
         assert len(plt.get_fignums()) > 0
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_origin_lower(self, mock_show):
-        """Test that image origin is set to 'lower'."""
         cb.plot_mrc(self.mrc_image)
-        
+
         ax = plt.gca()
         img = ax.images[0]
-        
-        # Check that origin is set to 'lower' for proper orientation
+
         assert img.origin == 'lower'
-    
+
     @parameterized.parameters(
         (jnp.float32,),
         (jnp.float64,),
@@ -235,8 +189,6 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
     )
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_different_dtypes(self, dtype, mock_show):
-        """Test plotting with different data types."""
-        # Create MRC with specific dtype
         data = self.sample_data.astype(dtype)
         mrc = make_MRC_Image(
             image_data=data,
@@ -247,67 +199,56 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
             data_mean=jnp.mean(data),
             mode=2
         )
-        
-        # Should handle different dtypes gracefully
+
         cb.plot_mrc(mrc)
-        
+
         assert len(plt.get_fignums()) > 0
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_large_voxel_size(self, mock_show):
-        """Test plotting with large voxel sizes."""
-        # Create MRC with large voxel size
         large_voxel_mrc = make_MRC_Image(
             image_data=self.sample_data,
-            voxel_size=jnp.array([10.0, 50.0, 50.0]),  # 50 Å per pixel
+            voxel_size=jnp.array([10.0, 50.0, 50.0]),
             origin=jnp.zeros(3),
             data_min=jnp.min(self.sample_data),
             data_max=jnp.max(self.sample_data),
             data_mean=jnp.mean(self.sample_data),
             mode=2
         )
-        
+
         cb.plot_mrc(large_voxel_mrc)
-        
-        # Scalebar should adjust accordingly
+
         ax = plt.gca()
         scalebar = None
         for artist in ax.get_children():
             if isinstance(artist, sb.ScaleBar):
                 scalebar = artist
                 break
-        
+
         assert scalebar is not None
-        # 10 * 50 Å = 500 Å = 50 nm
         assert scalebar.dx == 500.0
-    
+
     def test_plot_function_imports(self):
-        """Test that all required imports are available."""
-        # This ensures the module has proper imports
         assert hasattr(cb, 'plot_mrc')
-        
-        # Check that matplotlib is properly configured
+
         import matplotlib
         backend = matplotlib.get_backend()
         assert backend is not None
-    
+
     @patch('matplotlib.pyplot.subplots')
     @patch('matplotlib.pyplot.show')
     def test_plot_mrc_figure_creation(self, mock_show, mock_subplots):
-        """Test the figure creation process."""
-        # Mock the figure and axes
         mock_fig = Mock()
         mock_ax = Mock()
         mock_ax.imshow = Mock()
         mock_ax.add_artist = Mock()
         mock_ax.axis = Mock()
         mock_fig.tight_layout = Mock()
-        
+
         mock_subplots.return_value = (mock_fig, mock_ax)
-        
+
         cb.plot_mrc(self.mrc_image)
-        
-        # Verify the plotting sequence
+
         mock_subplots.assert_called_once_with(figsize=(15, 15))
         mock_ax.imshow.assert_called_once()
         mock_ax.add_artist.assert_called_once()
@@ -317,14 +258,12 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
 
 
 class TestPlotIntegration(chex.TestCase):
-    """Integration tests for plotting with other modules."""
-    
+
     def setUp(self):
         super().setUp()
-        # Create a more complex test image
         x, y = jnp.meshgrid(jnp.linspace(-5, 5, 100), jnp.linspace(-5, 5, 100))
         self.complex_data = jnp.exp(-(x**2 + y**2) / 2) * 100
-        
+
         self.complex_mrc = make_MRC_Image(
             image_data=self.complex_data,
             voxel_size=jnp.array([1.0, 1.5, 1.5]),
@@ -334,22 +273,19 @@ class TestPlotIntegration(chex.TestCase):
             data_mean=jnp.mean(self.complex_data),
             mode=2
         )
-    
+
     def tearDown(self):
         plt.close('all')
         super().tearDown()
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_after_preprocessing(self, mock_show):
-        """Test plotting after image preprocessing."""
-        # Preprocess the image
         processed_data = cb.preprocessing(
             self.complex_data,
             exponential=True,
             gblur=2
         )
-        
-        # Create new MRC with processed data
+
         processed_mrc = make_MRC_Image(
             image_data=processed_data,
             voxel_size=self.complex_mrc.voxel_size,
@@ -359,20 +295,18 @@ class TestPlotIntegration(chex.TestCase):
             data_mean=jnp.mean(processed_data),
             mode=self.complex_mrc.mode
         )
-        
-        # Plot should work with processed data
+
         cb.plot_mrc(processed_mrc, mode='log')
-        
+
         assert len(plt.get_fignums()) > 0
-    
+
     @patch('matplotlib.pyplot.show')
     def test_plot_different_image_shapes(self, mock_show):
-        """Test plotting with various image shapes."""
         shapes = [(50, 100), (100, 50), (200, 200), (10, 300)]
-        
+
         for shape in shapes:
-            plt.close('all')  # Clear previous plots
-            
+            plt.close('all')
+
             data = jnp.ones(shape)
             mrc = make_MRC_Image(
                 image_data=data,
@@ -383,10 +317,9 @@ class TestPlotIntegration(chex.TestCase):
                 data_mean=1.0,
                 mode=2
             )
-            
+
             cb.plot_mrc(mrc)
-            
-            # Should create a plot for each shape
+
             assert len(plt.get_fignums()) > 0
 
 

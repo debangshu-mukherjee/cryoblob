@@ -22,6 +22,8 @@ Submodules
     and blob detection results.
 - `types`:
     Type aliases and PyTrees.
+- `valid`:
+    Pydantic models for data validation and configuration management.
 """
 
 from .adapt import *
@@ -30,3 +32,4 @@ from .files import *
 from .image import *
 from .plots import *
 from .types import *
+from .valid import *

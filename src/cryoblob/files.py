@@ -174,11 +174,9 @@ def process_single_file(
     """
     try:
         if stream_mode:
-            # Stream large files in chunks
             with mrcfile.mmap(file_path, mode="r") as data_mrc:
                 x_calib = jnp.asarray(data_mrc.voxel_size.x)
                 y_calib = jnp.asarray(data_mrc.voxel_size.y)
-                # Process image in chunks if needed
                 im_data = jnp.asarray(data_mrc.data, dtype=jnp.float64)
         else:
             with mrcfile.open(file_path) as data_mrc:
@@ -186,23 +184,13 @@ def process_single_file(
                 y_calib = jnp.asarray(data_mrc.voxel_size.y)
                 im_data = jnp.asarray(data_mrc.data, dtype=jnp.float64)
 
-        # Move data to device
         im_data = device_put(im_data)
-
-        # Preprocess and detect blobs
         preprocessed_imdata = cb.preprocessing(
             image_orig=im_data, return_params=False, **preprocessing_kwargs
         )
-
-        # Clear intermediate results
         del im_data
-
         blob_list = cb.blob_list(preprocessed_imdata, downscale=blob_downscale)
-
-        # Clear more intermediate results
         del preprocessed_imdata
-
-        # Scale blob coordinates efficiently
         scaled_blobs = jnp.concatenate(
             [
                 (blob_list[:, 0] * y_calib)[:, None],
@@ -211,7 +199,6 @@ def process_single_file(
             ],
             axis=1,
         )
-
         return scaled_blobs, file_path
 
     except Exception as e:
@@ -284,7 +271,6 @@ def folder_blobs(
     - Streams large files if needed
     - Efficiently handles intermediate results
     """
-    # Setup preprocessing parameters
     default_kwargs = {
         "exponential": False,
         "logarizer": False,
@@ -293,41 +279,25 @@ def folder_blobs(
         "apply_filter": 0,
     }
     preprocessing_kwargs = {**default_kwargs, **kwargs}
-
-    # Get file list
     file_list = glob.glob(folder_location + "*." + file_type)
-
     if not file_list:
         return pd.DataFrame(
             columns=["File Location", "Center Y (nm)", "Center X (nm)", "Size (nm)"]
         )
-
-    # Estimate optimal batch size
     batch_size = cb.estimate_batch_size(file_list[0], target_memory_gb)
-
-    # Process files in batches with progress tracking
     all_blobs = []
     all_files = []
-
     with tqdm(total=len(file_list), desc="Processing files") as pbar:
         for i in range(0, len(file_list), batch_size):
-            # Get current batch
             batch_files = file_list[i : i + batch_size]
-
-            # Process batch
             batch_results = process_batch_of_files(
                 batch_files, preprocessing_kwargs, blob_downscale
             )
-
-            # Store results
             for blobs, file_path in batch_results:
                 if len(blobs) > 0:
-                    # Move results to CPU to free GPU memory
                     cpu_blobs = device_get(blobs)
                     all_blobs.append(cpu_blobs)
                     all_files.extend([file_path] * len(cpu_blobs))
-
-            # Clear device memory
             pbar.update(len(batch_files))
     if all_blobs:
         combined_blobs = np.concatenate(all_blobs, axis=0)

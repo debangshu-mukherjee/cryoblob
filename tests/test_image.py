@@ -7,7 +7,6 @@ from jax import random
 
 jax.config.update("jax_enable_x64", True)
 
-# Import your functions here
 from cryoblob import fast_resizer, gaussian_kernel, wiener
 
 if __name__ == "__main__":
@@ -63,11 +62,9 @@ class test_fast_resizer(chex.TestCase):
         batch_size = 3
         images = random.uniform(self.rng, (batch_size,) + self.base_shape)
 
-        # Test with vmap
         batch_resize = jax.vmap(lambda x: var_fast_resizer(x, 0.5))
         results = batch_resize(images)
 
-        # Compare with individual processing
         for i in range(batch_size):
             individual_result = var_fast_resizer(images[i], 0.5)
             chex.assert_trees_all_close(results[i], individual_result)
@@ -84,9 +81,9 @@ class test_fast_resizer(chex.TestCase):
 
     @chex.all_variants
     @parameterized.parameters(
-        {"sampling": 0.1},  # Very small sampling rate
-        {"sampling": 10.0},  # Very large sampling rate
-        {"sampling": (0.1, 10.0)},  # Mixed sampling rates
+        {"sampling": 0.1},
+        {"sampling": 10.0},
+        {"sampling": (0.1, 10.0)},
     )
     def test_extreme_sampling(self, sampling):
         var_fast_resizer = self.variant(fast_resizer)
@@ -121,13 +118,12 @@ class test_fast_resizer(chex.TestCase):
         test_image = jnp.array([[0.1, 0.2], [0.3, 0.4]])
         result = var_fast_resizer(test_image, 0.5)
 
-        # Check that output values are in reasonable range
         assert jnp.all(
             result >= test_image.min() * 0.9
-        )  # Allow for small numerical errors
+        )
         assert jnp.all(
             result <= test_image.max() * 1.1
-        )  # Allow for small numerical errors
+        )
 
 
 class test_gaussian_kernel(chex.TestCase):
@@ -165,11 +161,8 @@ class test_gaussian_kernel(chex.TestCase):
         size, sigma = 5, 1.0
         kernel = var_gaussian_kernel(size, sigma)
 
-        # Test horizontal symmetry
         chex.assert_trees_all_close(kernel, jnp.flip(kernel, axis=0))
-        # Test vertical symmetry
         chex.assert_trees_all_close(kernel, jnp.flip(kernel, axis=1))
-        # Test diagonal symmetry
         chex.assert_trees_all_close(kernel, kernel.T)
 
     @chex.all_variants
@@ -189,19 +182,17 @@ class test_gaussian_kernel(chex.TestCase):
 
     @chex.all_variants
     @parameterized.parameters(
-        {"size": 3, "sigma": 0.1},  # Small sigma
-        {"size": 3, "sigma": 10.0},  # Large sigma
-        {"size": 11, "sigma": 0.5},  # Large size, small sigma
-        {"size": 11, "sigma": 5.0},  # Large size, large sigma
+        {"size": 3, "sigma": 0.1},
+        {"size": 3, "sigma": 10.0},
+        {"size": 11, "sigma": 0.5},
+        {"size": 11, "sigma": 5.0},
     )
     def test_extreme_parameters(self, size, sigma):
         """Test kernel behavior with extreme parameters."""
         var_gaussian_kernel = self.variant(gaussian_kernel)
         kernel = var_gaussian_kernel(size, sigma)
 
-        # Check if output is finite
         chex.assert_tree_all_finite(kernel)
-        # Check normalization
         assert jnp.isclose(jnp.sum(kernel), 1.0, atol=1e-6)
 
     @chex.all_variants
@@ -211,7 +202,6 @@ class test_gaussian_kernel(chex.TestCase):
         size, sigma = 3, 1.0
         kernel = var_gaussian_kernel(size, sigma)
 
-        # Center value should be largest
         center_value = kernel[1, 1]
         corner_value = kernel[0, 0]
         assert (
@@ -258,14 +248,10 @@ class test_gaussian_kernel(chex.TestCase):
         center = size // 2
 
         def check_monotonic(row):
-            # Check left side
             assert jnp.all(jnp.diff(row[:center]) >= -1e-6)
-            # Check right side
             assert jnp.all(jnp.diff(row[center:]) <= 1e-6)
 
-        # Check center row
         check_monotonic(kernel[center, :])
-        # Check center column
         check_monotonic(kernel[:, center])
 
 
@@ -300,15 +286,12 @@ class test_wiener(chex.TestCase):
         """Test if filter reduces noise in image."""
         var_wiener = self.variant(wiener)
 
-        # Create noisy image
         clean_image = jnp.ones((20, 20))
         noise = random.normal(self.rng, clean_image.shape) * noise_level
         noisy_image = clean_image + noise
 
-        # Apply filter
         filtered = var_wiener(noisy_image, kernel_size)
 
-        # Check if noise is reduced
         noisy_variance = jnp.var(noisy_image)
         filtered_variance = jnp.var(filtered)
         assert (
@@ -322,7 +305,6 @@ class test_wiener(chex.TestCase):
         constant_image = jnp.full((10, 10), 1.0)
         filtered = var_wiener(constant_image)
 
-        # Should preserve constant images
         chex.assert_trees_all_close(filtered, constant_image, atol=1e-5)
 
     @chex.all_variants
@@ -331,12 +313,9 @@ class test_wiener(chex.TestCase):
         var_wiener = self.variant(wiener)
         image = self.test_image
 
-        # Test integer kernel size
         result1 = var_wiener(image, kernel_size=3)
-        # Test tuple kernel size
         result2 = var_wiener(image, kernel_size=(3, 3))
 
-        # Results should be identical
         chex.assert_trees_all_close(result1, result2)
 
     @chex.all_variants
@@ -347,12 +326,9 @@ class test_wiener(chex.TestCase):
             self.test_image + random.normal(self.rng, self.test_image.shape) * 0.1
         )
 
-        # Test with automatic noise estimation
         result1 = var_wiener(noisy_image)
-        # Test with explicit noise parameter
         result2 = var_wiener(noisy_image, noise=0.1)
 
-        # Results should be different but both valid
         assert not jnp.allclose(result1, result2)
         chex.assert_tree_all_finite(result1)
         chex.assert_tree_all_finite(result2)
@@ -385,17 +361,13 @@ class test_wiener(chex.TestCase):
         """Test if filter preserves strong edges."""
         var_wiener = self.variant(wiener)
 
-        # Create image with step edge
         edge_image = jnp.zeros((20, 20))
         edge_image = edge_image.at[:, 10:].set(1.0)
 
-        # Add noise
         noisy_edge = edge_image + random.normal(self.rng, edge_image.shape) * 0.1
 
-        # Filter
         filtered = var_wiener(noisy_edge)
 
-        # Check if edge is preserved (check middle row)
         middle_row = filtered[10, :]
         edge_location = jnp.argmax(jnp.abs(jnp.diff(middle_row)))
         assert 9 <= edge_location <= 11, f"Edge not preserved at expected location"
@@ -413,12 +385,10 @@ class test_wiener(chex.TestCase):
         """Test function behavior with extreme input values."""
         var_wiener = self.variant(wiener)
 
-        # Test with very large values
         large_image = self.test_image * 1e5
         large_result = var_wiener(large_image)
         chex.assert_tree_all_finite(large_result)
 
-        # Test with very small values
         small_image = self.test_image * 1e-5
         small_result = var_wiener(small_image)
         chex.assert_tree_all_finite(small_result)

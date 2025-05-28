@@ -4,8 +4,6 @@ This package is intended to function as the repository for data wrangling and an
 
 This package can use both CPUs and GPUs because of JAX.
 
-Additionally, the package organization assumes that a POSIX compliant system is present *(Linux or MacOS)*. Ideally you should be running this in a Linux environment.
-
 ## Pre-Installation
 
 These are directions on how to get your python environment ready for installation
