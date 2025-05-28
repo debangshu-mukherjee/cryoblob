@@ -18,6 +18,7 @@ Notebooks/__pycache__/
 /data/results/
 /@eaDir/
 @eaDir
+.DS_Store
 
 # C extensions
 *.so
