@@ -45,7 +45,7 @@ from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
 
 import cryoblob as cb
-from cryoblob.types import *
+from cryoblob.types import scalar_num, scalar_int, scalar_float
 
 jax.config.update("jax_enable_x64", True)
 

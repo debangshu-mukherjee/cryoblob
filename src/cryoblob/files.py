@@ -35,7 +35,7 @@ from jaxtyping import Array, Float
 from tqdm.auto import tqdm
 
 import cryoblob as cb
-from cryoblob.types import *
+from cryoblob.types import MRC_Image, make_MRC_Image
 
 jax.config.update("jax_enable_x64", True)
 
@@ -128,7 +128,7 @@ def load_mrc(filepath: str) -> MRC_Image:
         data_max = jnp.array(mrc.header.dmax)
         data_mean = jnp.array(mrc.header.dmean)
         mode = jnp.array(mrc.header.mode)
-    return MRC_Image(
+    MRC_data: MRC_Image = make_MRC_Image(
         image_data=data,
         voxel_size=voxel_size,
         origin=origin,
@@ -137,6 +137,7 @@ def load_mrc(filepath: str) -> MRC_Image:
         data_mean=data_mean,
         mode=mode,
     )
+    return MRC_data
 
 
 def process_single_file(
@@ -328,8 +329,6 @@ def folder_blobs(
 
             # Clear device memory
             pbar.update(len(batch_files))
-
-    # Combine results
     if all_blobs:
         combined_blobs = np.concatenate(all_blobs, axis=0)
         blob_dataframe = pd.DataFrame(

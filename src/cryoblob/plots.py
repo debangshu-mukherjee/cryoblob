@@ -23,7 +23,7 @@ from jaxtyping import Array, Float
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from cryoblob.types import *
+from cryoblob.types import MRC_Image, scalar_int
 
 
 @beartype
