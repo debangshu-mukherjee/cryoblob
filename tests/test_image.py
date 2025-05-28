@@ -118,12 +118,8 @@ class test_fast_resizer(chex.TestCase):
         test_image = jnp.array([[0.1, 0.2], [0.3, 0.4]])
         result = var_fast_resizer(test_image, 0.5)
 
-        assert jnp.all(
-            result >= test_image.min() * 0.9
-        )
-        assert jnp.all(
-            result <= test_image.max() * 1.1
-        )
+        assert jnp.all(result >= test_image.min() * 0.9)
+        assert jnp.all(result <= test_image.max() * 1.1)
 
 
 class test_gaussian_kernel(chex.TestCase):

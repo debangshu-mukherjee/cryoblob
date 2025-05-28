@@ -1,12 +1,14 @@
 import matplotlib
-matplotlib.use('Agg')
 
+matplotlib.use("Agg")
+
+from unittest.mock import Mock, patch
+
+import chex
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import matplotlib_scalebar.scalebar as sb
 import numpy as np
-import jax.numpy as jnp
-from unittest.mock import Mock, patch
-import chex
 from absl.testing import parameterized
 
 import cryoblob as cb
@@ -25,7 +27,7 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
             data_min=jnp.min(self.sample_data),
             data_max=jnp.max(self.sample_data),
             data_mean=jnp.mean(self.sample_data),
-            mode=2
+            mode=2,
         )
 
         self.uniform_data = jnp.ones((20, 20)) * 50
@@ -36,14 +38,14 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
             data_min=50.0,
             data_max=50.0,
             data_mean=50.0,
-            mode=2
+            mode=2,
         )
 
     def tearDown(self):
-        plt.close('all')
+        plt.close("all")
         super().tearDown()
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_basic(self, mock_show):
         cb.plot_mrc(self.mrc_image)
 
@@ -66,19 +68,14 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
         assert scalebar_found
 
     @parameterized.parameters(
-        ((10, 10), 'viridis', 'plain'),
-        ((20, 20), 'plasma', 'log'),
-        ((15, 15), 'inferno', 'exp'),
-        ((5, 5), 'magma', 'plain'),
+        ((10, 10), "viridis", "plain"),
+        ((20, 20), "plasma", "log"),
+        ((15, 15), "inferno", "exp"),
+        ((5, 5), "magma", "plain"),
     )
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_parameters(self, image_size, cmap, mode, mock_show):
-        cb.plot_mrc(
-            self.mrc_image,
-            image_size=image_size,
-            cmap=cmap,
-            mode=mode
-        )
+        cb.plot_mrc(self.mrc_image, image_size=image_size, cmap=cmap, mode=mode)
 
         fig = plt.gcf()
         ax = plt.gca()
@@ -89,9 +86,9 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
         img = ax.images[0]
         assert img.get_cmap().name == cmap
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_mode_plain(self, mock_show):
-        cb.plot_mrc(self.mrc_image, mode='plain')
+        cb.plot_mrc(self.mrc_image, mode="plain")
 
         ax = plt.gca()
         img = ax.images[0]
@@ -100,9 +97,9 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
         assert np.min(img_data) >= 0
         assert np.max(img_data) <= 1
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_mode_log(self, mock_show):
-        cb.plot_mrc(self.mrc_image, mode='log')
+        cb.plot_mrc(self.mrc_image, mode="log")
 
         ax = plt.gca()
         img = ax.images[0]
@@ -110,9 +107,9 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
 
         assert np.min(img_data) >= 0
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_mode_exp(self, mock_show):
-        cb.plot_mrc(self.mrc_image, mode='exp')
+        cb.plot_mrc(self.mrc_image, mode="exp")
 
         ax = plt.gca()
         img = ax.images[0]
@@ -122,11 +119,11 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
 
     def test_plot_mrc_invalid_mode(self):
         with self.assertRaises(ValueError) as context:
-            cb.plot_mrc(self.mrc_image, mode='invalid')
+            cb.plot_mrc(self.mrc_image, mode="invalid")
 
         assert "Invalid mode" in str(context.exception)
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_scalebar_properties(self, mock_show):
         cb.plot_mrc(self.mrc_image)
 
@@ -141,11 +138,11 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
         assert scalebar is not None
 
         assert scalebar.dx == 20.0
-        assert scalebar.units == 'nm'
-        assert scalebar.location == 'lower right'
-        assert scalebar.color == 'white'
+        assert scalebar.units == "nm"
+        assert scalebar.location == "lower right"
+        assert scalebar.color == "white"
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_uniform_data(self, mock_show):
         cb.plot_mrc(self.uniform_mrc)
 
@@ -163,31 +160,31 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
                 data_min=jnp.min(new_data),
                 data_max=jnp.max(new_data),
                 data_mean=jnp.mean(new_data),
-                mode=mrc.mode
+                mode=mrc.mode,
             )
 
         transformed_mrc = self.variant(transform_mrc)(self.mrc_image)
 
-        with patch('matplotlib.pyplot.show'):
+        with patch("matplotlib.pyplot.show"):
             cb.plot_mrc(transformed_mrc)
 
         assert len(plt.get_fignums()) > 0
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_origin_lower(self, mock_show):
         cb.plot_mrc(self.mrc_image)
 
         ax = plt.gca()
         img = ax.images[0]
 
-        assert img.origin == 'lower'
+        assert img.origin == "lower"
 
     @parameterized.parameters(
         (jnp.float32,),
         (jnp.float64,),
         (jnp.int32,),
     )
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_different_dtypes(self, dtype, mock_show):
         data = self.sample_data.astype(dtype)
         mrc = make_MRC_Image(
@@ -197,14 +194,14 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
             data_min=jnp.min(data),
             data_max=jnp.max(data),
             data_mean=jnp.mean(data),
-            mode=2
+            mode=2,
         )
 
         cb.plot_mrc(mrc)
 
         assert len(plt.get_fignums()) > 0
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_large_voxel_size(self, mock_show):
         large_voxel_mrc = make_MRC_Image(
             image_data=self.sample_data,
@@ -213,7 +210,7 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
             data_min=jnp.min(self.sample_data),
             data_max=jnp.max(self.sample_data),
             data_mean=jnp.mean(self.sample_data),
-            mode=2
+            mode=2,
         )
 
         cb.plot_mrc(large_voxel_mrc)
@@ -229,14 +226,15 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
         assert scalebar.dx == 500.0
 
     def test_plot_function_imports(self):
-        assert hasattr(cb, 'plot_mrc')
+        assert hasattr(cb, "plot_mrc")
 
         import matplotlib
+
         backend = matplotlib.get_backend()
         assert backend is not None
 
-    @patch('matplotlib.pyplot.subplots')
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.subplots")
+    @patch("matplotlib.pyplot.show")
     def test_plot_mrc_figure_creation(self, mock_show, mock_subplots):
         mock_fig = Mock()
         mock_ax = Mock()
@@ -252,7 +250,7 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
         mock_subplots.assert_called_once_with(figsize=(15, 15))
         mock_ax.imshow.assert_called_once()
         mock_ax.add_artist.assert_called_once()
-        mock_ax.axis.assert_called_once_with('off')
+        mock_ax.axis.assert_called_once_with("off")
         mock_fig.tight_layout.assert_called_once()
         mock_show.assert_called_once()
 
@@ -271,20 +269,16 @@ class TestPlotIntegration(chex.TestCase):
             data_min=jnp.min(self.complex_data),
             data_max=jnp.max(self.complex_data),
             data_mean=jnp.mean(self.complex_data),
-            mode=2
+            mode=2,
         )
 
     def tearDown(self):
-        plt.close('all')
+        plt.close("all")
         super().tearDown()
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_after_preprocessing(self, mock_show):
-        processed_data = cb.preprocessing(
-            self.complex_data,
-            exponential=True,
-            gblur=2
-        )
+        processed_data = cb.preprocessing(self.complex_data, exponential=True, gblur=2)
 
         processed_mrc = make_MRC_Image(
             image_data=processed_data,
@@ -293,19 +287,19 @@ class TestPlotIntegration(chex.TestCase):
             data_min=jnp.min(processed_data),
             data_max=jnp.max(processed_data),
             data_mean=jnp.mean(processed_data),
-            mode=self.complex_mrc.mode
+            mode=self.complex_mrc.mode,
         )
 
-        cb.plot_mrc(processed_mrc, mode='log')
+        cb.plot_mrc(processed_mrc, mode="log")
 
         assert len(plt.get_fignums()) > 0
 
-    @patch('matplotlib.pyplot.show')
+    @patch("matplotlib.pyplot.show")
     def test_plot_different_image_shapes(self, mock_show):
         shapes = [(50, 100), (100, 50), (200, 200), (10, 300)]
 
         for shape in shapes:
-            plt.close('all')
+            plt.close("all")
 
             data = jnp.ones(shape)
             mrc = make_MRC_Image(
@@ -315,7 +309,7 @@ class TestPlotIntegration(chex.TestCase):
                 data_min=0.0,
                 data_max=1.0,
                 data_mean=1.0,
-                mode=2
+                mode=2,
             )
 
             cb.plot_mrc(mrc)
@@ -325,4 +319,5 @@ class TestPlotIntegration(chex.TestCase):
 
 if __name__ == "__main__":
     from absl.testing import absltest
+
     absltest.main()

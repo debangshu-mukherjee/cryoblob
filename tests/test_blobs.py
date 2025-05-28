@@ -111,7 +111,7 @@ class TestCenterOfMass(chex.TestCase, parameterized.TestCase):
         labels = jnp.zeros((5, 5, 5), dtype=jnp.int32)
 
         for i in range(3):
-            image = image.at[i+1, 1:4, 1:4].set(float(i+1))
+            image = image.at[i + 1, 1:4, 1:4].set(float(i + 1))
         labels = labels.at[1:4, 1:4, 1:4].set(1)
 
         def compute_com(img, lbl):
@@ -120,6 +120,7 @@ class TestCenterOfMass(chex.TestCase, parameterized.TestCase):
         centroids = self.variant(compute_com)(image, labels)
 
         assert centroids[0, 0] > 2.0
+
 
 class TestFindParticleCoords(chex.TestCase, parameterized.TestCase):
 
@@ -136,9 +137,7 @@ class TestFindParticleCoords(chex.TestCase, parameterized.TestCase):
         def find_particles(results, max_filt, thresh):
             return cb.find_particle_coords(results, max_filt, thresh)
 
-        coords = self.variant(find_particles)(
-            self.results_3d, self.max_filtered, 5.0
-        )
+        coords = self.variant(find_particles)(self.results_3d, self.max_filtered, 5.0)
 
         assert coords.shape[1] == 3
         assert len(coords) <= 2
@@ -149,9 +148,7 @@ class TestFindParticleCoords(chex.TestCase, parameterized.TestCase):
         def find_particles(results, max_filt):
             return cb.find_particle_coords(results, max_filt, threshold)
 
-        coords = self.variant(find_particles)(
-            self.results_3d, self.max_filtered
-        )
+        coords = self.variant(find_particles)(self.results_3d, self.max_filtered)
 
         if threshold > 8.0:
             assert len(coords) <= 1
@@ -185,7 +182,9 @@ class TestPreprocessing(chex.TestCase, parameterized.TestCase):
         (False, False, 0, 0, 3),
     )
     @chex.all_variants
-    def test_preprocessing_options(self, exponential, logarizer, gblur, background, apply_filter):
+    def test_preprocessing_options(
+        self, exponential, logarizer, gblur, background, apply_filter
+    ):
         def preprocess(image):
             return cb.preprocessing(
                 image,
@@ -193,7 +192,7 @@ class TestPreprocessing(chex.TestCase, parameterized.TestCase):
                 logarizer=logarizer,
                 gblur=gblur,
                 background=background,
-                apply_filter=apply_filter
+                apply_filter=apply_filter,
             )
 
         processed = self.variant(preprocess)(self.test_image)
@@ -210,11 +209,11 @@ class TestPreprocessing(chex.TestCase, parameterized.TestCase):
 
         assert processed.shape == self.test_image.shape
         assert isinstance(params, dict)
-        assert 'exponential' in params
-        assert 'logarizer' in params
-        assert 'gblur' in params
-        assert 'background' in params
-        assert 'apply_filter' in params
+        assert "exponential" in params
+        assert "logarizer" in params
+        assert "gblur" in params
+        assert "background" in params
+        assert "apply_filter" in params
 
     @chex.all_variants
     def test_preprocessing_constant_image(self):
@@ -234,9 +233,9 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-10, 10, 100), jnp.linspace(-10, 10, 100))
 
-        blob1 = 100 * jnp.exp(-((x-3)**2 + (y-3)**2) / 4)
-        blob2 = 80 * jnp.exp(-((x+3)**2 + (y+3)**2) / 9)
-        blob3 = 60 * jnp.exp(-((x-3)**2 + (y+3)**2) / 16)
+        blob1 = 100 * jnp.exp(-((x - 3) ** 2 + (y - 3) ** 2) / 4)
+        blob2 = 80 * jnp.exp(-((x + 3) ** 2 + (y + 3) ** 2) / 9)
+        blob3 = 60 * jnp.exp(-((x - 3) ** 2 + (y + 3) ** 2) / 16)
 
         image_data = blob1 + blob2 + blob3 + 10
 
@@ -247,7 +246,7 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
             data_min=jnp.min(image_data),
             data_max=jnp.max(image_data),
             data_mean=jnp.mean(image_data),
-            mode=2
+            mode=2,
         )
 
     @chex.all_variants
@@ -259,7 +258,7 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
                 max_blob_size=20,
                 blob_step=2,
                 downscale=2,
-                std_threshold=3
+                std_threshold=3,
             )
 
         blobs = self.variant(detect_blobs)(self.mrc_image)
@@ -283,7 +282,7 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
                 min_blob_size=min_size,
                 max_blob_size=max_size,
                 blob_step=step,
-                downscale=2
+                downscale=2,
             )
 
         blobs = self.variant(detect_blobs)(self.mrc_image)
@@ -291,7 +290,9 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
         assert blobs.shape[1] == 3
         if len(blobs) > 0:
             sizes = blobs[:, 2]
-            voxel_scale = jnp.sqrt(self.mrc_image.voxel_size[1] * self.mrc_image.voxel_size[2])
+            voxel_scale = jnp.sqrt(
+                self.mrc_image.voxel_size[1] * self.mrc_image.voxel_size[2]
+            )
             min_expected = min_size * voxel_scale
             max_expected = max_size * voxel_scale
 
@@ -303,10 +304,7 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
     def test_blob_list_log_downscale(self, downscale):
         def detect_blobs(mrc):
             return cb.blob_list_log(
-                mrc,
-                min_blob_size=5,
-                max_blob_size=20,
-                downscale=downscale
+                mrc, min_blob_size=5, max_blob_size=20, downscale=downscale
             )
 
         blobs = self.variant(detect_blobs)(self.mrc_image)
@@ -316,10 +314,12 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
         if len(blobs) > 0:
             coords = blobs[:, :2]
             image_shape = self.mrc_image.image_data.shape
-            max_coords = jnp.array([
-                image_shape[0] * self.mrc_image.voxel_size[1],
-                image_shape[1] * self.mrc_image.voxel_size[2]
-            ])
+            max_coords = jnp.array(
+                [
+                    image_shape[0] * self.mrc_image.voxel_size[1],
+                    image_shape[1] * self.mrc_image.voxel_size[2],
+                ]
+            )
             assert jnp.all(coords >= 0)
             assert jnp.all(coords <= max_coords)
 
@@ -332,7 +332,7 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
             data_min=10.0,
             data_max=10.0,
             data_mean=10.0,
-            mode=2
+            mode=2,
         )
 
         def detect_blobs(mrc):
@@ -348,15 +348,12 @@ class TestIntegration(chex.TestCase, parameterized.TestCase):
     @chex.all_variants
     def test_full_pipeline(self):
         x, y = jnp.meshgrid(jnp.linspace(-5, 5, 50), jnp.linspace(-5, 5, 50))
-        image = jnp.exp(-(x**2 + y**2) / 2) + 0.1 * jax.random.normal(jax.random.PRNGKey(42), (50, 50))
+        image = jnp.exp(-(x**2 + y**2) / 2) + 0.1 * jax.random.normal(
+            jax.random.PRNGKey(42), (50, 50)
+        )
 
         def full_pipeline(img):
-            processed = cb.preprocessing(
-                img,
-                exponential=True,
-                gblur=2,
-                background=5
-            )
+            processed = cb.preprocessing(img, exponential=True, gblur=2, background=5)
 
             mrc = make_MRC_Image(
                 image_data=processed,
@@ -365,7 +362,7 @@ class TestIntegration(chex.TestCase, parameterized.TestCase):
                 data_min=jnp.min(processed),
                 data_max=jnp.max(processed),
                 data_mean=jnp.mean(processed),
-                mode=2
+                mode=2,
             )
 
             blobs = cb.blob_list_log(mrc, min_blob_size=3, max_blob_size=10)
@@ -387,4 +384,5 @@ class TestIntegration(chex.TestCase, parameterized.TestCase):
 
 if __name__ == "__main__":
     from absl.testing import absltest
+
     absltest.main()

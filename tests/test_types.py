@@ -5,7 +5,8 @@ import pytest
 from absl.testing import parameterized
 from jax import tree_util
 
-from cryoblob.types import MRC_Image, make_MRC_Image, scalar_float, scalar_int, scalar_num
+from cryoblob.types import (MRC_Image, make_MRC_Image, scalar_float,
+                            scalar_int, scalar_num)
 
 
 class TestTypeAliases(parameterized.TestCase):
@@ -44,23 +45,23 @@ class TestMRCImage(chex.TestCase):
     def setUp(self):
         super().setUp()
         self.sample_2d_data = {
-            'image_data': jnp.ones((100, 100)),
-            'voxel_size': jnp.array([1.0, 1.2, 1.2]),
-            'origin': jnp.array([0.0, 0.0, 0.0]),
-            'data_min': jnp.array(0.0),
-            'data_max': jnp.array(1.0),
-            'data_mean': jnp.array(0.5),
-            'mode': jnp.array(2)
+            "image_data": jnp.ones((100, 100)),
+            "voxel_size": jnp.array([1.0, 1.2, 1.2]),
+            "origin": jnp.array([0.0, 0.0, 0.0]),
+            "data_min": jnp.array(0.0),
+            "data_max": jnp.array(1.0),
+            "data_mean": jnp.array(0.5),
+            "mode": jnp.array(2),
         }
 
         self.sample_3d_data = {
-            'image_data': jnp.ones((50, 100, 100)),
-            'voxel_size': jnp.array([1.5, 1.2, 1.2]),
-            'origin': jnp.array([10.0, 20.0, 30.0]),
-            'data_min': jnp.array(-1.0),
-            'data_max': jnp.array(2.0),
-            'data_mean': jnp.array(0.7),
-            'mode': jnp.array(2)
+            "image_data": jnp.ones((50, 100, 100)),
+            "voxel_size": jnp.array([1.5, 1.2, 1.2]),
+            "origin": jnp.array([10.0, 20.0, 30.0]),
+            "data_min": jnp.array(-1.0),
+            "data_max": jnp.array(2.0),
+            "data_mean": jnp.array(0.7),
+            "mode": jnp.array(2),
         }
 
     @chex.all_variants
@@ -72,12 +73,16 @@ class TestMRCImage(chex.TestCase):
 
         assert isinstance(mrc_image, MRC_Image)
         assert mrc_image.image_data.shape == (100, 100)
-        chex.assert_trees_all_close(mrc_image.voxel_size, self.sample_2d_data['voxel_size'])
-        chex.assert_trees_all_close(mrc_image.origin, self.sample_2d_data['origin'])
-        chex.assert_trees_all_close(mrc_image.data_min, self.sample_2d_data['data_min'])
-        chex.assert_trees_all_close(mrc_image.data_max, self.sample_2d_data['data_max'])
-        chex.assert_trees_all_close(mrc_image.data_mean, self.sample_2d_data['data_mean'])
-        assert mrc_image.mode == self.sample_2d_data['mode']
+        chex.assert_trees_all_close(
+            mrc_image.voxel_size, self.sample_2d_data["voxel_size"]
+        )
+        chex.assert_trees_all_close(mrc_image.origin, self.sample_2d_data["origin"])
+        chex.assert_trees_all_close(mrc_image.data_min, self.sample_2d_data["data_min"])
+        chex.assert_trees_all_close(mrc_image.data_max, self.sample_2d_data["data_max"])
+        chex.assert_trees_all_close(
+            mrc_image.data_mean, self.sample_2d_data["data_mean"]
+        )
+        assert mrc_image.mode == self.sample_2d_data["mode"]
 
     @chex.all_variants
     def test_make_mrc_image_3d(self):
@@ -88,8 +93,10 @@ class TestMRCImage(chex.TestCase):
 
         assert isinstance(mrc_image, MRC_Image)
         assert mrc_image.image_data.shape == (50, 100, 100)
-        chex.assert_trees_all_close(mrc_image.voxel_size, self.sample_3d_data['voxel_size'])
-        chex.assert_trees_all_close(mrc_image.origin, self.sample_3d_data['origin'])
+        chex.assert_trees_all_close(
+            mrc_image.voxel_size, self.sample_3d_data["voxel_size"]
+        )
+        chex.assert_trees_all_close(mrc_image.origin, self.sample_3d_data["origin"])
 
     def test_mrc_image_is_pytree(self):
         mrc_image = make_MRC_Image(**self.sample_2d_data)
@@ -115,21 +122,23 @@ class TestMRCImage(chex.TestCase):
 
         def create_scaled_mrc(scale: scalar_float) -> MRC_Image:
             data = self.sample_2d_data.copy()
-            data['image_data'] = data['image_data'] * scale
-            data['data_max'] = data['data_max'] * scale
-            data['data_mean'] = data['data_mean'] * scale
+            data["image_data"] = data["image_data"] * scale
+            data["data_max"] = data["data_max"] * scale
+            data["data_mean"] = data["data_mean"] * scale
             return make_MRC_Image(**data)
 
         mrc_images = jax.vmap(create_scaled_mrc)(scales)
+
         def get_mean(mrc: MRC_Image) -> scalar_float:
             return mrc.data_mean
 
         means = jax.vmap(get_mean)(mrc_images)
-        expected_means = self.sample_2d_data['data_mean'] * scales
+        expected_means = self.sample_2d_data["data_mean"] * scales
         chex.assert_trees_all_close(means, expected_means)
 
     def test_mrc_image_tree_map(self):
         mrc_image = make_MRC_Image(**self.sample_2d_data)
+
         def scale_by_two(x):
             if isinstance(x, jnp.ndarray):
                 return x * 2
@@ -160,7 +169,7 @@ class TestMRCImage(chex.TestCase):
             data_min=0.0,
             data_max=1.0,
             data_mean=0.5,
-            mode=2
+            mode=2,
         )
         assert mrc_image.image_data.dtype == dtype
 
@@ -177,7 +186,7 @@ class TestMRCImage(chex.TestCase):
             data_min=0.0,
             data_max=1.0,
             data_mean=1.0,
-            mode=2
+            mode=2,
         )
         assert mrc_image.image_data.shape == shape
 
@@ -192,8 +201,9 @@ class TestTypeValidation(chex.TestCase):
             data_min=0.0,
             data_max=1.0,
             data_mean=0.5,
-            mode=2
+            mode=2,
         )
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
