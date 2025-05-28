@@ -22,7 +22,6 @@ Classes
 
 from pathlib import Path
 
-import jax.numpy as jnp
 from beartype.typing import Literal, Optional, Tuple, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.types import PositiveFloat, PositiveInt

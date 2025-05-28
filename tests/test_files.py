@@ -1,10 +1,9 @@
 import json
 import os
 import tempfile
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import chex
-import jax
 import jax.numpy as jnp
 import mrcfile
 import numpy as np
@@ -13,6 +12,7 @@ from absl.testing import parameterized
 
 import cryoblob as cb
 from cryoblob.types import MRC_Image, make_MRC_Image, scalar_float
+from cryoblob.valid import PreprocessingConfig
 
 
 class TestFileParams(chex.TestCase):
@@ -138,16 +138,16 @@ class TestProcessSingleFile(chex.TestCase, parameterized.TestCase):
 
         filepath = self.create_test_file_with_blobs("test_blobs.mrc")
 
-        preprocessing_kwargs = {
-            "exponential": False,
-            "logarizer": False,
-            "gblur": 0,
-            "background": 0,
-            "apply_filter": 0,
-        }
+        preprocessing_config = PreprocessingConfig(
+            exponential=False,
+            logarizer=False,
+            gblur=0,
+            background=0,
+            apply_filter=0,
+        )
 
         blobs, returned_path = cb.process_single_file(
-            filepath, preprocessing_kwargs, blob_downscale=4.0, stream_mode=False
+            filepath, preprocessing_config, blob_downscale=4.0, stream_mode=False
         )
 
         assert returned_path == filepath
@@ -161,12 +161,12 @@ class TestProcessSingleFile(chex.TestCase, parameterized.TestCase):
     def test_process_single_file_stream_mode(self, stream_mode):
         filepath = self.create_test_file_with_blobs("test_stream.mrc")
 
-        preprocessing_kwargs = {"exponential": True}
+        preprocessing_config = PreprocessingConfig(exponential=True)
 
         with patch("mrcfile.mmap" if stream_mode else "mrcfile.open"):
             blobs, _ = cb.process_single_file(
                 filepath,
-                preprocessing_kwargs,
+                preprocessing_config,
                 blob_downscale=4.0,
                 stream_mode=stream_mode,
             )
@@ -174,12 +174,30 @@ class TestProcessSingleFile(chex.TestCase, parameterized.TestCase):
             assert isinstance(blobs, jnp.ndarray)
 
     def test_process_single_file_error_handling(self):
+        preprocessing_config = PreprocessingConfig()
+        
         blobs, filepath = cb.process_single_file(
-            "nonexistent.mrc", {}, blob_downscale=1.0
+            "nonexistent.mrc", preprocessing_config, blob_downscale=1.0
         )
 
         assert len(blobs) == 0
         assert filepath == "nonexistent.mrc"
+
+    def test_process_single_file_different_configs(self):
+        filepath = self.create_test_file_with_blobs("test_config.mrc")
+        
+        configs = [
+            PreprocessingConfig(exponential=True, gblur=2),
+            PreprocessingConfig(logarizer=True, background=5),
+            PreprocessingConfig(apply_filter=3),
+        ]
+        
+        for config in configs:
+            blobs, returned_path = cb.process_single_file(
+                filepath, config, blob_downscale=4.0
+            )
+            assert isinstance(blobs, jnp.ndarray)
+            assert returned_path == filepath
 
 
 class TestProcessBatchOfFiles(chex.TestCase):
@@ -192,19 +210,37 @@ class TestProcessBatchOfFiles(chex.TestCase):
         def mock_vmap_impl(fn):
             def wrapped(files):
                 return [fn(f) for f in files]
-
             return wrapped
 
         mock_vmap.side_effect = mock_vmap_impl
 
         file_batch = ["file1.mrc", "file2.mrc", "file3.mrc"]
-        preprocessing_kwargs = {}
+        preprocessing_config = PreprocessingConfig()
 
         results = cb.process_batch_of_files(
-            file_batch, preprocessing_kwargs, blob_downscale=1.0
+            file_batch, preprocessing_config, blob_downscale=1.0
         )
 
         assert len(results) == 3
+
+    def test_process_batch_of_files_with_config(self):
+        preprocessing_config = PreprocessingConfig(
+            exponential=True,
+            gblur=2,
+            background=5
+        )
+        
+        with patch("cryoblob.files.process_single_file") as mock_process:
+            mock_process.return_value = (jnp.array([[1.0, 2.0, 3.0]]), "test.mrc")
+            
+            with patch("jax.vmap") as mock_vmap:
+                mock_vmap.return_value = lambda x: [(jnp.array([[1.0, 2.0, 3.0]]), "test.mrc")]
+                
+                results = cb.process_batch_of_files(
+                    ["test.mrc"], preprocessing_config, 1.0
+                )
+                
+                assert len(results) == 1
 
 
 class TestFolderBlobs(chex.TestCase, parameterized.TestCase):
@@ -279,10 +315,42 @@ class TestFolderBlobs(chex.TestCase, parameterized.TestCase):
             cb.folder_blobs(self.test_dir + "/", file_type="mrc", **kwargs)
 
             call_args = mock_process.call_args
-            preprocessing_kwargs = call_args[0][1]
+            preprocessing_config = call_args[0][1]
 
+            assert isinstance(preprocessing_config, PreprocessingConfig)
             for key, value in kwargs.items():
-                assert preprocessing_kwargs[key] == value
+                assert getattr(preprocessing_config, key) == value
+
+    def test_folder_blobs_invalid_preprocessing_params(self):
+        with self.assertRaises(ValueError) as context:
+            cb.folder_blobs(
+                self.test_dir + "/",
+                exponential=True,
+                logarizer=True,
+            )
+        
+        assert "Invalid preprocessing parameters" in str(context.exception)
+
+    def test_folder_blobs_preprocessing_config_validation(self):
+        self.create_test_folder(num_files=1)
+        
+        with patch("cryoblob.files.process_batch_of_files") as mock_process:
+            mock_process.return_value = [(jnp.array([]), "test.mrc")]
+            
+            result_df = cb.folder_blobs(
+                self.test_dir + "/",
+                exponential=True,
+                gblur=5,
+                background=10
+            )
+            
+            call_args = mock_process.call_args
+            preprocessing_config = call_args[0][1]
+            
+            assert isinstance(preprocessing_config, PreprocessingConfig)
+            assert preprocessing_config.exponential == True
+            assert preprocessing_config.gblur == 5
+            assert preprocessing_config.background == 10
 
 
 class TestMemoryManagement(chex.TestCase):
@@ -315,14 +383,14 @@ class TestMemoryManagement(chex.TestCase):
                 mrc.voxel_size = (1.0, 1.0, 1.0)
                 mrc.update_header_from_data()
 
-            cb.process_single_file(filepath, {}, blob_downscale=1.0)
+            preprocessing_config = PreprocessingConfig()
+            cb.process_single_file(filepath, preprocessing_config, blob_downscale=1.0)
 
             assert mock_device_put.called
             assert mock_device_get.called
 
         finally:
             import shutil
-
             shutil.rmtree(test_dir)
 
 
@@ -355,6 +423,51 @@ class TestDataFrameOutput(chex.TestCase):
         assert np.issubdtype(df["Center Y (nm)"].dtype, np.floating)
         assert np.issubdtype(df["Center X (nm)"].dtype, np.floating)
         assert np.issubdtype(df["Size (nm)"].dtype, np.floating)
+
+
+class TestPreprocessingConfigIntegration(chex.TestCase):
+    """Test integration between preprocessing config and file processing functions."""
+
+    def test_preprocessing_config_creation_from_kwargs(self):
+        kwargs = {
+            "exponential": True,
+            "gblur": 3,
+            "background": 7,
+            "apply_filter": 5
+        }
+        
+        with patch("glob.glob") as mock_glob:
+            mock_glob.return_value = []
+            
+            df = cb.folder_blobs("dummy/", **kwargs)
+            assert isinstance(df, pd.DataFrame)
+
+    def test_preprocessing_config_validation_in_folder_blobs(self):
+        with self.assertRaises(ValueError):
+            cb.folder_blobs(
+                "dummy/",
+                exponential=True,
+                logarizer=True,
+            )
+
+    def test_preprocessing_config_defaults(self):
+        with patch("glob.glob") as mock_glob:
+            mock_glob.return_value = []
+            
+            with patch("cryoblob.files.process_batch_of_files") as mock_process:
+                mock_process.return_value = []
+                
+                cb.folder_blobs("dummy/")
+                
+                if mock_process.called:
+                    call_args = mock_process.call_args
+                    config = call_args[0][1]
+                    
+                    assert config.exponential == False
+                    assert config.logarizer == False
+                    assert config.gblur == 0
+                    assert config.background == 0
+                    assert config.apply_filter == 0
 
 
 if __name__ == "__main__":
