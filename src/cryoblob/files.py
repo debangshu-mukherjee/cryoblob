@@ -271,8 +271,11 @@ def process_single_file(
         return empty_array, file_path
 
 
+@jaxtyped(typechecker=beartype)
 def process_batch_of_files(
-    file_batch: List[str], preprocessing_kwargs: Dict, blob_downscale: float
+    file_batch: List[str], 
+    preprocessing_config: PreprocessingConfig, 
+    blob_downscale: scalar_float
 ) -> List[Tuple[Float[Array, "n 3"], str]]:
     """
     Process a batch of files in parallel with memory optimization.
@@ -292,8 +295,8 @@ def process_batch_of_files(
         List of (blobs, file_path) tuples
     """
     batch_process_fn = vmap(
-        lambda x: process_single_file(x, preprocessing_kwargs, blob_downscale)
-    )
+        lambda x: process_single_file(x, preprocessing_config, blob_downscale)
+        )
     return batch_process_fn(jnp.array(file_batch))
 
 
