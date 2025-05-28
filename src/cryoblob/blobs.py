@@ -28,7 +28,8 @@ from beartype.typing import Optional, Tuple
 from jax import lax
 from jaxtyping import Array, Bool, Float, Integer, jaxtyped
 
-import cryoblob as cb
+from cryoblob.image import (apply_gaussian_blur, image_resizer,
+                            laplacian_of_gaussian, wiener)
 from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
 
 
@@ -204,10 +205,10 @@ def find_particle_coords(
     binary: Bool[Array, "x y z"] = max_filtered > image_thresh
     labels: Integer[Array, "x y z"]
     num_labels: scalar_int
-    labels, num_labels = cb.find_connected_components(binary)
-    coords = cb.center_of_mass_3d(results_3D, labels, num_labels)
-    labels, num_labels = cb.find_connected_components(binary)
-    coords: Float[Array, "n 3"] = cb.center_of_mass_3d(results_3D, labels, num_labels)
+    labels, num_labels = find_connected_components(binary)
+    coords = center_of_mass_3d(results_3D, labels, num_labels)
+    labels, num_labels = find_connected_components(binary)
+    coords: Float[Array, "n 3"] = center_of_mass_3d(results_3D, labels, num_labels)
     return coords
 
 
@@ -274,11 +275,11 @@ def preprocessing(
     if logarizer:
         image_proc = jnp.log(image_proc)
     if gblur > 0:
-        image_proc = cb.apply_gaussian_blur(image_proc, sigma=gblur)
+        image_proc = apply_gaussian_blur(image_proc, sigma=gblur)
     if background > 0:
-        image_proc = image_proc - cb.apply_gaussian_blur(image_proc, sigma=background)
+        image_proc = image_proc - apply_gaussian_blur(image_proc, sigma=background)
     if apply_filter > 0:
-        image_proc = cb.wiener(image_proc, kernel_size=apply_filter)
+        image_proc = wiener(image_proc, kernel_size=apply_filter)
     if return_params:
         return image_proc, processing_params
     else:
@@ -326,10 +327,10 @@ def blob_list_log(
     peak_range: Float[Array, "scales"] = jnp.arange(
         min_blob_size, max_blob_size, blob_step
     )
-    scaled_image: Float[Array, "h w"] = cb.image_resizer(image, downscale)
+    scaled_image: Float[Array, "h w"] = image_resizer(image, downscale)
 
     def apply_log(img, sigma):
-        return cb.laplacian_of_gaussian(img, standard_deviation=sigma)
+        return laplacian_of_gaussian(img, standard_deviation=sigma)
 
     results_3D: Float[Array, "scales h w"] = jax.vmap(apply_log, in_axes=(None, 0))(
         scaled_image, peak_range
@@ -346,7 +347,7 @@ def blob_list_log(
     mean_val: scalar_float = jnp.mean(max_filtered)
     std_val: scalar_float = jnp.std(max_filtered)
     image_thresh: scalar_float = mean_val + std_threshold * std_val
-    coords: Float[Array, "n 3"] = cb.find_particle_coords(
+    coords: Float[Array, "n 3"] = find_particle_coords(
         results_3D, max_filtered, image_thresh
     )
     scaled_coords: Float[Array, "n 3"] = jnp.concatenate(

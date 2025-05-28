@@ -44,7 +44,6 @@ from jax import lax
 from jax.scipy import signal
 from jaxtyping import Array, Bool, Float, Integer, Num, Real, jaxtyped
 
-import cryoblob as cb
 from cryoblob.types import scalar_float, scalar_int, scalar_num
 
 jax.config.update("jax_enable_x64", True)
@@ -88,9 +87,9 @@ def image_resizer(
     in_y, in_x = image.shape
     new_y_len: scalar_int = jnp.round(in_y / sampling_array[0]).astype(jnp.int32)
     new_x_len: scalar_int = jnp.round(in_x / sampling_array[1]).astype(jnp.int32)
-    resized_x: Float[Array, "y new_x"] = cb.resize_x(image, new_x_len)
+    resized_x: Float[Array, "y new_x"] = resize_x(image, new_x_len)
     swapped: Float[Array, "new_x y"] = jnp.swapaxes(resized_x, 0, 1)
-    resized_xy: Float[Array, "new_x new_y"] = cb.resize_x(swapped, new_y_len)
+    resized_xy: Float[Array, "new_x new_y"] = resize_x(swapped, new_y_len)
     resampled_image: Float[Array, "new_y new_x"] = jnp.swapaxes(resized_xy, 0, 1)
     return resampled_image
 
@@ -276,22 +275,22 @@ def difference_of_gaussians(
     resize_needed: bool = sampling != 1
     sampled_image: Float[Array, "y x"] = jax.lax.cond(
         resize_needed,
-        lambda img: cb.image_resizer(img, resize_factor),
+        lambda img: image_resizer(img, resize_factor),
         lambda img: jnp.asarray(img, dtype=jnp.float64),
         image,
     )
     sampled_image = jax.lax.cond(
         hist_stretch,
-        cb.equalize_hist,
+        equalize_hist,
         lambda img: img,
         sampled_image,
     )
     size1: scalar_int = jnp.maximum(3, (jnp.round(sigma1 * 6) // 2) * 2 + 1)
     size2: scalar_int = jnp.maximum(3, (jnp.round(sigma2 * 6) // 2) * 2 + 1)
-    gauss_kernel1: Float[Array, "size1 size1"] = cb.gaussian_kernel(
+    gauss_kernel1: Float[Array, "size1 size1"] = gaussian_kernel(
         size=size1, sigma=sigma1
     )
-    gauss_kernel2: Float[Array, "size2 size2"] = cb.gaussian_kernel(
+    gauss_kernel2: Float[Array, "size2 size2"] = gaussian_kernel(
         size=size2, sigma=sigma2
     )
     blur1: Float[Array, "y x"] = signal.convolve2d(

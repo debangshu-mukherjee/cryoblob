@@ -7,13 +7,13 @@ from jax import random
 
 jax.config.update("jax_enable_x64", True)
 
-from cryoblob import fast_resizer, gaussian_kernel, wiener
+from cryoblob.image import image_resizer, gaussian_kernel, wiener
 
 if __name__ == "__main__":
     pytest.main([__file__])
 
 
-class test_fast_resizer(chex.TestCase):
+class test_image_resizer(chex.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
@@ -33,9 +33,9 @@ class test_fast_resizer(chex.TestCase):
         },
     )
     def test_output_shapes(self, shape, sampling, expected_shape):
-        var_fast_resizer = self.variant(fast_resizer)
+        var_image_resizer = self.variant(image_resizer)
         image = random.uniform(self.rng, shape)
-        result = var_fast_resizer(image, sampling)
+        result = var_image_resizer(image, sampling)
         chex.assert_shape(result, expected_shape)
 
     @chex.all_variants
@@ -52,31 +52,31 @@ class test_fast_resizer(chex.TestCase):
         },
     )
     def test_known_values(self, image, sampling, expected):
-        var_fast_resizer = self.variant(fast_resizer)
-        result = var_fast_resizer(image, sampling)
+        var_image_resizer = self.variant(image_resizer)
+        result = var_image_resizer(image, sampling)
         chex.assert_trees_all_close(result, expected, atol=1e-5)
 
     @chex.all_variants
     def test_batch_consistency(self):
-        var_fast_resizer = self.variant(fast_resizer)
+        var_image_resizer = self.variant(image_resizer)
         batch_size = 3
         images = random.uniform(self.rng, (batch_size,) + self.base_shape)
 
-        batch_resize = jax.vmap(lambda x: var_fast_resizer(x, 0.5))
+        batch_resize = jax.vmap(lambda x: var_image_resizer(x, 0.5))
         results = batch_resize(images)
 
         for i in range(batch_size):
-            individual_result = var_fast_resizer(images[i], 0.5)
+            individual_result = var_image_resizer(images[i], 0.5)
             chex.assert_trees_all_close(results[i], individual_result)
 
     @chex.all_variants
     def test_dtype_consistency(self):
-        var_fast_resizer = self.variant(fast_resizer)
+        var_image_resizer = self.variant(image_resizer)
         dtypes = [jnp.float32, jnp.float64]
 
         for dtype in dtypes:
             image = self.base_image.astype(dtype)
-            result = var_fast_resizer(image, 0.5)
+            result = var_image_resizer(image, 0.5)
             assert result.dtype == dtype, f"Expected dtype {dtype}, got {result.dtype}"
 
     @chex.all_variants
@@ -86,16 +86,16 @@ class test_fast_resizer(chex.TestCase):
         {"sampling": (0.1, 10.0)},
     )
     def test_extreme_sampling(self, sampling):
-        var_fast_resizer = self.variant(fast_resizer)
-        result = var_fast_resizer(self.base_image, sampling)
+        var_image_resizer = self.variant(image_resizer)
+        result = var_image_resizer(self.base_image, sampling)
         chex.assert_tree_all_finite(result)
 
     @chex.all_variants
     def test_gradient_computation(self):
-        var_fast_resizer = self.variant(fast_resizer)
+        var_image_resizer = self.variant(image_resizer)
 
         def loss_fn(image):
-            resized = var_fast_resizer(image, 0.5)
+            resized = var_image_resizer(image, 0.5)
             return jnp.sum(resized)
 
         grad_fn = jax.grad(loss_fn)
@@ -106,17 +106,17 @@ class test_fast_resizer(chex.TestCase):
 
     @chex.all_variants
     def test_deterministic_output(self):
-        var_fast_resizer = self.variant(fast_resizer)
-        result1 = var_fast_resizer(self.base_image, 0.5)
-        result2 = var_fast_resizer(self.base_image, 0.5)
+        var_image_resizer = self.variant(image_resizer)
+        result1 = var_image_resizer(self.base_image, 0.5)
+        result2 = var_image_resizer(self.base_image, 0.5)
         chex.assert_trees_all_close(result1, result2)
 
     @chex.all_variants
     def test_image_range_preservation(self):
         """Test that the resizer preserves the general range of values."""
-        var_fast_resizer = self.variant(fast_resizer)
+        var_image_resizer = self.variant(image_resizer)
         test_image = jnp.array([[0.1, 0.2], [0.3, 0.4]])
-        result = var_fast_resizer(test_image, 0.5)
+        result = var_image_resizer(test_image, 0.5)
 
         assert jnp.all(result >= test_image.min() * 0.9)
         assert jnp.all(result <= test_image.max() * 1.1)

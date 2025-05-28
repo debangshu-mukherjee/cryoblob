@@ -11,12 +11,20 @@ Functions
 ---------
 - `file_params`:
     Get the parameters for the file organization.
+- `load_mrc`:
+    Reads an MRC-format cryo-EM file, extracting image data and metadata.
 - `process_single_file`:
     Process a single file for blob detection with memory optimization.
 - `process_batch_of_files`:
     Process a batch of files in parallel with memory optimization.
 - `folder_blobs`:
     Process a folder of images for blob detection with memory optimization.
+- `estimate_batch_size`:
+    Estimate optimal batch size for processing MRC files based on available memory.
+- `estimate_memory_usage`:
+    Estimate memory usage in GB for processing a single MRC file.
+- `get_optimal_batch_size`:
+    Get optimal batch size by sampling multiple files from the list.
 """
 
 import glob
@@ -29,13 +37,15 @@ import jax.numpy as jnp
 import mrcfile
 import numpy as np
 import pandas as pd
-from beartype.typing import Dict, List, Literal, Tuple
+from beartype import beartype
+from beartype.typing import Dict, List, Literal, Optional, Tuple
 from jax import device_get, device_put, vmap
-from jaxtyping import Array, Float
+from jaxtyping import Array, Float, jaxtyped
 from tqdm.auto import tqdm
 
-import cryoblob as cb
-from cryoblob.types import MRC_Image, make_MRC_Image
+from cryoblob.blobs import blob_list_log
+from cryoblob.types import (MRC_Image, make_MRC_Image, scalar_float,
+                            scalar_int, scalar_num)
 
 jax.config.update("jax_enable_x64", True)
 
@@ -185,11 +195,11 @@ def process_single_file(
                 im_data = jnp.asarray(data_mrc.data, dtype=jnp.float64)
 
         im_data = device_put(im_data)
-        preprocessed_imdata = cb.preprocessing(
+        preprocessed_imdata = preprocessing(
             image_orig=im_data, return_params=False, **preprocessing_kwargs
         )
         del im_data
-        blob_list = cb.blob_list(preprocessed_imdata, downscale=blob_downscale)
+        blob_list = blob_list_log(preprocessed_imdata, downscale=blob_downscale)
         del preprocessed_imdata
         scaled_blobs = jnp.concatenate(
             [
@@ -284,7 +294,7 @@ def folder_blobs(
         return pd.DataFrame(
             columns=["File Location", "Center Y (nm)", "Center X (nm)", "Size (nm)"]
         )
-    batch_size = cb.estimate_batch_size(file_list[0], target_memory_gb)
+    batch_size = estimate_batch_size(file_list[0], target_memory_gb)
     all_blobs = []
     all_files = []
     with tqdm(total=len(file_list), desc="Processing files") as pbar:
@@ -311,3 +321,217 @@ def folder_blobs(
         )
 
     return blob_dataframe
+
+
+@jaxtyped(typechecker=beartype)
+def estimate_batch_size(
+    sample_file_path: str,
+    target_memory_gb: Optional[scalar_float] = 4.0,
+    safety_factor: Optional[scalar_float] = 0.7,
+    processing_overhead: Optional[scalar_float] = 3.0,
+) -> scalar_int:
+    """
+    Description
+    -----------
+    Estimate optimal batch size for processing MRC files based on available memory
+    and file characteristics. This function analyzes a sample file to estimate
+    memory requirements and calculates the maximum number of files that can be
+    processed simultaneously without exceeding memory limits.
+
+    Parameters
+    ----------
+    - `sample_file_path` (str):
+        Path to a representative MRC file for size estimation
+    - `target_memory_gb` (scalar_float, optional):
+        Target GPU memory usage in GB. Default is 4.0
+    - `safety_factor` (scalar_float, optional):
+        Safety factor to prevent memory overflow (0.0-1.0).
+        Default is 0.7 (use 70% of target memory)
+    - `processing_overhead` (scalar_float, optional):
+        Memory overhead multiplier for processing operations.
+        Default is 3.0 (processing uses 3x the raw data size)
+
+    Returns
+    -------
+    - `batch_size` (scalar_int):
+        Recommended batch size for processing
+
+    Notes
+    -----
+    The estimation considers:
+    - Raw file size in memory (dtype conversion)
+    - Preprocessing operations (filtering, transformations)
+    - Blob detection memory requirements
+    - JAX compilation overhead
+    - Intermediate array storage
+
+    Memory estimation formula:
+    ```
+    per_file_memory = file_size * processing_overhead
+    available_memory = target_memory_gb * safety_factor * 1e9
+    batch_size = max(1, available_memory // per_file_memory)
+    ```
+
+    Examples
+    --------
+    >>> batch_size = estimate_batch_size("sample.mrc", target_memory_gb=8.0)
+    >>> print(f"Recommended batch size: {batch_size}")
+    """
+    try:
+        file_size_bytes: scalar_float = float(os.path.getsize(sample_file_path))
+
+        with mrcfile.open(sample_file_path, mode="r", permissive=True) as mrc:
+            data_shape: tuple = mrc.data.shape
+            data_dtype: str = str(mrc.data.dtype)
+
+            dtype_bytes: scalar_int
+            if "float64" in data_dtype:
+                dtype_bytes = 8
+            elif "float32" in data_dtype:
+                dtype_bytes = 4
+            elif "int32" in data_dtype:
+                dtype_bytes = 4
+            elif "int16" in data_dtype:
+                dtype_bytes = 2
+            elif "int8" in data_dtype or "uint8" in data_dtype:
+                dtype_bytes = 1
+            else:
+                dtype_bytes = 4
+
+            array_elements: scalar_int = int(jnp.prod(jnp.array(data_shape)))
+            base_memory_bytes: scalar_float = float(array_elements * dtype_bytes)
+
+            jax_memory_bytes: scalar_float = float(array_elements * 8)
+
+            per_file_memory: scalar_float = jax_memory_bytes * processing_overhead
+
+            target_memory_bytes: scalar_float = target_memory_gb * 1e9
+            available_memory: scalar_float = target_memory_bytes * safety_factor
+
+            estimated_batch_size: scalar_float = available_memory / per_file_memory
+            batch_size: scalar_int = max(1, int(jnp.floor(estimated_batch_size)))
+
+            min_batch_size: scalar_int = 1
+            max_batch_size: scalar_int = 50
+
+            final_batch_size: scalar_int = max(
+                min_batch_size, min(batch_size, max_batch_size)
+            )
+
+            return final_batch_size
+
+    except Exception as e:
+        print(f"Warning: Could not estimate batch size for {sample_file_path}: {e}")
+        print("Using conservative batch size of 2")
+        return 2
+
+
+@jaxtyped(typechecker=beartype)
+def estimate_memory_usage(
+    file_path: str,
+    include_preprocessing: Optional[bool] = True,
+    include_blob_detection: Optional[bool] = True,
+) -> scalar_float:
+    """
+    Description
+    -----------
+    Estimate memory usage in GB for processing a single MRC file.
+
+    Parameters
+    ----------
+    - `file_path` (str):
+        Path to MRC file
+    - `include_preprocessing` (bool, optional):
+        Include memory for preprocessing operations. Default is True
+    - `include_blob_detection` (bool, optional):
+        Include memory for blob detection. Default is True
+
+    Returns
+    -------
+    - `memory_gb` (scalar_float):
+        Estimated memory usage in GB
+    """
+    try:
+        with mrcfile.open(file_path, mode="r", permissive=True) as mrc:
+            data_shape: tuple = mrc.data.shape
+
+            array_elements: scalar_int = int(jnp.prod(jnp.array(data_shape)))
+            base_memory: scalar_float = float(array_elements * 8)
+
+            total_memory: scalar_float = base_memory
+
+            if include_preprocessing:
+                preprocessing_memory: scalar_float = base_memory * 2.0
+                total_memory += preprocessing_memory
+
+            if include_blob_detection:
+                typical_scales: scalar_int = 10
+                downscale_factor: scalar_float = 4.0
+
+                downscaled_elements: scalar_float = array_elements / (
+                    downscale_factor**2
+                )
+                scale_space_memory: scalar_float = (
+                    downscaled_elements * typical_scales * 8
+                )
+                total_memory += scale_space_memory
+
+            memory_gb: scalar_float = total_memory / 1e9
+
+            return memory_gb
+
+    except Exception as e:
+        print(f"Warning: Could not estimate memory for {file_path}: {e}")
+        return 1.0
+
+
+@jaxtyped(typechecker=beartype)
+def get_optimal_batch_size(
+    file_list: list[str],
+    target_memory_gb: Optional[scalar_float] = 4.0,
+    sample_fraction: Optional[scalar_float] = 0.1,
+) -> scalar_int:
+    """
+    Description
+    -----------
+    Get optimal batch size by sampling multiple files from the list.
+
+    Parameters
+    ----------
+    - `file_list` (list[str]):
+        List of file paths to process
+    - `target_memory_gb` (scalar_float, optional):
+        Target memory usage in GB. Default is 4.0
+    - `sample_fraction` (scalar_float, optional):
+        Fraction of files to sample for estimation. Default is 0.1
+
+    Returns
+    -------
+    - `batch_size` (scalar_int):
+        Optimal batch size
+    """
+    if not file_list:
+        return 1
+
+    num_samples: scalar_int = max(1, int(len(file_list) * sample_fraction))
+    sample_indices: list = jnp.linspace(
+        0, len(file_list) - 1, num_samples, dtype=int
+    ).tolist()
+
+    batch_sizes: list = []
+
+    for idx in sample_indices:
+        try:
+            batch_size: scalar_int = estimate_batch_size(
+                file_list[idx], target_memory_gb=target_memory_gb
+            )
+            batch_sizes.append(batch_size)
+        except Exception:
+            continue
+
+    if not batch_sizes:
+        return 2
+
+    optimal_batch_size: scalar_int = int(min(batch_sizes))
+
+    return max(1, optimal_batch_size)
