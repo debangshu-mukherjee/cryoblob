@@ -698,7 +698,7 @@ def equalize_adapthist(
     )
 
     def process_block(block: Float[Array, "kh kw"]) -> Float[Array, "kh kw"]:
-        hist: Float[Array, "bins"] = cb.histogram(
+        hist: Float[Array, "bins"] = histogram(
             block, bins=nbins, range_limits=(0.0, 1.0)
         ).astype(jnp.float32)
         clip_val: scalar_float = (clip_limit * block.size) / nbins

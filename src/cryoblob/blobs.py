@@ -35,7 +35,7 @@ from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
 
 @jaxtyped(typechecker=beartype)
 def find_connected_components(
-    binary_image: Bool[Array, "x y z"], connectivity: Optional[int] = 6
+    binary_image: Bool[Array, "x y z"], connectivity: Optional[scalar_int] = 6
 ) -> Tuple[Integer[Array, "x y z"], scalar_int]:
     """
     Description

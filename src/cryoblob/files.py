@@ -38,18 +38,20 @@ import mrcfile
 import numpy as np
 import pandas as pd
 from beartype import beartype
-from beartype.typing import Dict, List, Literal, Optional, Tuple
+from beartype.typing import Dict, List, Literal, Optional, Tuple, Union
 from jax import device_get, device_put, vmap
 from jaxtyping import Array, Float, jaxtyped
+from pydantic import ValidationError
 from tqdm.auto import tqdm
 
-from cryoblob.blobs import blob_list_log
-from cryoblob.types import (MRC_Image, make_MRC_Image, scalar_float,
-                            scalar_int, scalar_num)
+from cryoblob.blobs import blob_list_log, preprocessing
+from cryoblob.types import MRC_Image, make_MRC_Image, scalar_float, scalar_int
+from cryoblob.valid import PreprocessingConfig
 
 jax.config.update("jax_enable_x64", True)
 
 
+@jaxtyped(typechecker=beartype)
 def file_params() -> Tuple[str, dict]:
     """
     Description
@@ -150,70 +152,123 @@ def load_mrc(filepath: str) -> MRC_Image:
     return MRC_data
 
 
+@jaxtyped(typechecker=beartype)
 def process_single_file(
     file_path: str,
-    preprocessing_kwargs: Dict,
-    blob_downscale: float,
-    stream_mode: bool = True,
+    preprocessing_config: PreprocessingConfig,
+    blob_downscale: scalar_float,
+    stream_mode: Optional[bool] = True,
 ) -> Tuple[Float[Array, "n 3"], str]:
     """
-    Process a single file for blob detection with memory optimization.
+    Description
+    -----------
+    Process a single MRC file for blob detection with memory optimization
+    and validated preprocessing configuration.
 
     Parameters
     ----------
     - `file_path` (str):
-        Path to the image file
-    - `preprocessing_kwargs` (Dict):
-        Preprocessing parameters
-    - `blob_downscale` (float):
-        Downscaling factor for blob detection
-    - `stream_mode` (bool):
-        Whether to use streaming for large files
+        Path to the MRC image file to process
+    - `preprocessing_config` (PreprocessingConfig):
+        Validated preprocessing configuration containing all processing parameters
+    - `blob_downscale` (scalar_float):
+        Downscaling factor applied during blob detection to reduce computational load
+    - `stream_mode` (bool, optional):
+        Whether to use memory-mapped file access for large files to reduce memory usage.
+        Default is True
 
     Returns
     -------
     - `scaled_blobs` (Float[Array, "n 3"]):
-        Array of blob coordinates and sizes
+        Array of detected blob coordinates and sizes where each row contains
+        [Y_position_nm, X_position_nm, Size_nm]
     - `file_path` (str):
-        Original file path
+        Original file path for tracking processed files
+
+    Raises
+    ------
+    Exception:
+        Returns empty array and original file path if processing fails,
+        with error message printed to console
 
     Notes
     -----
-    Uses streaming mode for large files to reduce memory usage.
-    Immediately releases file handles after reading.
+    The function uses streaming mode for large files to reduce memory usage
+    and immediately releases file handles after reading. All intermediate
+    arrays are explicitly deleted to manage GPU memory efficiently.
     """
     try:
         if stream_mode:
             with mrcfile.mmap(file_path, mode="r") as data_mrc:
-                x_calib = jnp.asarray(data_mrc.voxel_size.x)
-                y_calib = jnp.asarray(data_mrc.voxel_size.y)
-                im_data = jnp.asarray(data_mrc.data, dtype=jnp.float64)
+                x_calib: scalar_float = jnp.asarray(data_mrc.voxel_size.x)
+                y_calib: scalar_float = jnp.asarray(data_mrc.voxel_size.y)
+                im_data: Float[Array, "h w"] = jnp.asarray(
+                    data_mrc.data, dtype=jnp.float64
+                )
         else:
             with mrcfile.open(file_path) as data_mrc:
-                x_calib = jnp.asarray(data_mrc.voxel_size.x)
-                y_calib = jnp.asarray(data_mrc.voxel_size.y)
-                im_data = jnp.asarray(data_mrc.data, dtype=jnp.float64)
+                x_calib: scalar_float = jnp.asarray(data_mrc.voxel_size.x)
+                y_calib: scalar_float = jnp.asarray(data_mrc.voxel_size.y)
+                im_data: Float[Array, "h w"] = jnp.asarray(
+                    data_mrc.data, dtype=jnp.float64
+                )
 
         im_data = device_put(im_data)
-        preprocessed_imdata = preprocessing(
-            image_orig=im_data, return_params=False, **preprocessing_kwargs
+
+        mrc_image: MRC_Image = make_MRC_Image(
+            image_data=im_data,
+            voxel_size=jnp.array([1.0, y_calib, x_calib]),
+            origin=jnp.zeros(3),
+            data_min=jnp.min(im_data),
+            data_max=jnp.max(im_data),
+            data_mean=jnp.mean(im_data),
+            mode=2,
         )
+
+        preprocessed_imdata: Float[Array, "h w"] = preprocessing(
+            image_orig=mrc_image.image_data,
+            return_params=False,
+            exponential=preprocessing_config.exponential,
+            logarizer=preprocessing_config.logarizer,
+            gblur=preprocessing_config.gblur,
+            background=preprocessing_config.background,
+            apply_filter=preprocessing_config.apply_filter,
+        )
+
+        preprocessed_mrc: MRC_Image = make_MRC_Image(
+            image_data=preprocessed_imdata,
+            voxel_size=mrc_image.voxel_size,
+            origin=mrc_image.origin,
+            data_min=jnp.min(preprocessed_imdata),
+            data_max=jnp.max(preprocessed_imdata),
+            data_mean=jnp.mean(preprocessed_imdata),
+            mode=mrc_image.mode,
+        )
+
         del im_data
-        blob_list = blob_list_log(preprocessed_imdata, downscale=blob_downscale)
+        del mrc_image
+
+        blob_list: Float[Array, "n 3"] = blob_list_log(
+            preprocessed_mrc, downscale=blob_downscale
+        )
         del preprocessed_imdata
-        scaled_blobs = jnp.concatenate(
+        del preprocessed_mrc
+
+        scaled_blobs: Float[Array, "n 3"] = jnp.concatenate(
             [
                 (blob_list[:, 0] * y_calib)[:, None],
                 (blob_list[:, 1] * x_calib)[:, None],
-                (blob_list[:, 2] * ((y_calib**2 + x_calib**2) ** 0.5))[:, None],
+                (blob_list[:, 2] * jnp.sqrt(y_calib**2 + x_calib**2))[:, None],
             ],
             axis=1,
         )
+
         return scaled_blobs, file_path
 
     except Exception as e:
         print(f"Error processing {file_path}: {str(e)}")
-        return jnp.array([]), file_path
+        empty_array: Float[Array, "0 3"] = jnp.array([]).reshape(0, 3)
+        return empty_array, file_path
 
 
 def process_batch_of_files(
@@ -242,83 +297,132 @@ def process_batch_of_files(
     return batch_process_fn(jnp.array(file_batch))
 
 
+@jaxtyped(typechecker=beartype)
 def folder_blobs(
     folder_location: str,
-    file_type: Literal["mrc"] | None = "mrc",
-    blob_downscale: float | None = 7,
-    target_memory_gb: float = 4.0,
-    stream_large_files: bool = True,
+    file_type: Optional[Literal["mrc"]] = "mrc",
+    blob_downscale: Optional[scalar_float] = 7.0,
+    target_memory_gb: Optional[scalar_float] = 4.0,
+    stream_large_files: Optional[bool] = True,
     **kwargs,
 ) -> pd.DataFrame:
     """
-    Process a folder of images for blob detection with memory optimization.
+    Description
+    -----------
+    Process a folder of MRC images for blob detection with memory optimization
+    and validated preprocessing configuration. Automatically manages batch processing
+    and memory usage to prevent GPU memory overflow.
 
     Parameters
     ----------
     - `folder_location` (str):
-        Path to folder containing images
-    - `file_type` (str, optional):
-        File type to process. Default is "mrc"
-    - `blob_downscale` (float, optional):
-        Downscaling factor. Default is 7
-    - `target_memory_gb` (float, optional):
-        Target GPU memory usage in GB. Default is 4.0
+        Path to folder containing MRC images to process
+    - `file_type` (Literal["mrc"], optional):
+        File extension to search for in the folder. Default is "mrc"
+    - `blob_downscale` (scalar_float, optional):
+        Downscaling factor applied during blob detection. Default is 7.0
+    - `target_memory_gb` (scalar_float, optional):
+        Target GPU memory usage in GB for batch size optimization. Default is 4.0
     - `stream_large_files` (bool, optional):
-        Whether to use streaming for large files. Default is True
+        Whether to use memory-mapped file access for large files. Default is True
     - `**kwargs`:
-        Additional preprocessing parameters
+        Additional preprocessing parameters passed to PreprocessingConfig.
+        Valid options: exponential, logarizer, gblur, background, apply_filter
 
     Returns
     -------
     - `blob_dataframe` (pd.DataFrame):
-        DataFrame containing blob information
+        DataFrame containing detected blob information with columns:
+        ['File Location', 'Center Y (nm)', 'Center X (nm)', 'Size (nm)']
 
-    Memory Management
-    ----------------
+    Raises
+    ------
+    ValueError:
+        If preprocessing parameters are invalid according to PreprocessingConfig validation
+
+    Notes
+    -----
+    Memory Management:
     - Uses batch processing to control memory usage
     - Automatically adjusts batch size based on available memory
     - Clears device memory between batches
     - Streams large files if needed
     - Efficiently handles intermediate results
+
+    The function processes files in batches to prevent memory overflow and provides
+    a progress bar to track processing status. Empty folders return an empty DataFrame
+    with the expected column structure.
     """
-    default_kwargs = {
+    default_kwargs: Dict[str, Union[bool, int]] = {
         "exponential": False,
         "logarizer": False,
         "gblur": 0,
         "background": 0,
         "apply_filter": 0,
     }
-    preprocessing_kwargs = {**default_kwargs, **kwargs}
-    file_list = glob.glob(folder_location + "*." + file_type)
-    if not file_list:
-        return pd.DataFrame(
-            columns=["File Location", "Center Y (nm)", "Center X (nm)", "Size (nm)"]
+    combined_kwargs: Dict[str, Union[bool, int]] = {**default_kwargs, **kwargs}
+
+    try:
+        preprocessing_config: PreprocessingConfig = PreprocessingConfig(
+            **combined_kwargs
         )
-    batch_size = estimate_batch_size(file_list[0], target_memory_gb)
-    all_blobs = []
-    all_files = []
+    except ValidationError as e:
+        raise ValueError(f"Invalid preprocessing parameters: {e}")
+
+    file_pattern: str = folder_location + "*." + file_type
+    file_list: List[str] = glob.glob(file_pattern)
+
+    if not file_list:
+        empty_columns: List[str] = [
+            "File Location",
+            "Center Y (nm)",
+            "Center X (nm)",
+            "Size (nm)",
+        ]
+        return pd.DataFrame(columns=empty_columns)
+
+    batch_size: scalar_int = estimate_batch_size(file_list[0], target_memory_gb)
+    all_blobs: List[np.ndarray] = []
+    all_files: List[str] = []
+
     with tqdm(total=len(file_list), desc="Processing files") as pbar:
         for i in range(0, len(file_list), batch_size):
-            batch_files = file_list[i : i + batch_size]
-            batch_results = process_batch_of_files(
-                batch_files, preprocessing_kwargs, blob_downscale
+            batch_files: List[str] = file_list[i : i + batch_size]
+            batch_results: List[Tuple[Float[Array, "n 3"], str]] = (
+                process_batch_of_files(
+                    batch_files, preprocessing_config, blob_downscale
+                )
             )
+
             for blobs, file_path in batch_results:
                 if len(blobs) > 0:
-                    cpu_blobs = device_get(blobs)
+                    cpu_blobs: np.ndarray = device_get(blobs)
                     all_blobs.append(cpu_blobs)
-                    all_files.extend([file_path] * len(cpu_blobs))
+                    file_count: int = len(cpu_blobs)
+                    all_files.extend([file_path] * file_count)
+
             pbar.update(len(batch_files))
+
     if all_blobs:
-        combined_blobs = np.concatenate(all_blobs, axis=0)
-        blob_dataframe = pd.DataFrame(
-            data=np.column_stack((all_files, combined_blobs)),
-            columns=["File Location", "Center Y (nm)", "Center X (nm)", "Size (nm)"],
+        combined_blobs: np.ndarray = np.concatenate(all_blobs, axis=0)
+        blob_data: np.ndarray = np.column_stack((all_files, combined_blobs))
+        column_names: List[str] = [
+            "File Location",
+            "Center Y (nm)",
+            "Center X (nm)",
+            "Size (nm)",
+        ]
+        blob_dataframe: pd.DataFrame = pd.DataFrame(
+            data=blob_data, columns=column_names
         )
     else:
-        blob_dataframe = pd.DataFrame(
-            columns=["File Location", "Center Y (nm)", "Center X (nm)", "Size (nm)"]
-        )
+        column_names: List[str] = [
+            "File Location",
+            "Center Y (nm)",
+            "Center X (nm)",
+            "Size (nm)",
+        ]
+        blob_dataframe: pd.DataFrame = pd.DataFrame(columns=column_names)
 
     return blob_dataframe
 
