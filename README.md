@@ -1,42 +1,62 @@
-# Multi-Particle Cryo-EM
+# cryoblob
 
-This package is intended to function as the repository for data wrangling and analysis.
+**cryoblob** is a JAX-based, JIT-compiled, scalable package for detection of amorphous blobs in low SNR cryo-EM images.
 
-This package can use both CPUs and GPUs because of JAX.
+## Features
 
-## Pre-Installation
-
-These are directions on how to get your python environment ready for installation
-
-#### Pyenv pre-installation
-
-To get ready for installing the first time using [venv](https://docs.python.org/3/library/venv.html):
-```
-git git@code.ornl.gov:intersect-em/particle_finding.git
-cd particle_finding
-python -m venv env
-source env/bin/activate
-```
-
-This prepares your python environment for installation in the next steps
-
-#### Conda pre-installation
-To install for the first time using [conda](https://docs.conda.io/en/latest/):
-```
-conda create -n arm python==3.10
-git clone git@code.ornl.gov:arm-inititative/multi-particle-cryoem.git
-cd multi-particle-cryoem
-```
+* **JAX-powered**: Leverages JAX for high-performance computing with automatic differentiation
+* **GPU acceleration**: Can utilize both CPUs and GPUs for processing
+* **Adaptive filtering**: Includes adaptive Wiener filtering and thresholding
+* **Blob detection**: Advanced blob detection using Laplacian of Gaussian (LoG) methods  
+* **Batch processing**: Memory-optimized batch processing for large datasets
+* **Validation**: Comprehensive parameter validation using Pydantic models
 
 ## Installation
 
-After pre-installation, these are the directions to install the `cryoblob` package.
-
-```
-pip install -e .
+```bash
+pip install cryoblob
 ```
 
+## Quick Start
+
+```python
+import cryoblob as cb
+
+# Load an MRC file
+mrc_image = cb.load_mrc("your_file.mrc")
+
+# Process a folder of images
+results = cb.folder_blobs("path/to/folder/")
+
+# Plot results
+cb.plot_mrc(mrc_image)
+```
+
+## Package Structure
+
+The cryoblob package is organized into the following modules:
+
+* **adapt**: Adaptive image processing with gradient descent optimization
+* **blobs**: Core blob detection algorithms and preprocessing  
+* **files**: File I/O operations and batch processing
+* **image**: Basic image processing functions (filtering, resizing, etc.)
+* **plots**: Visualization functions for MRC images and results
+* **types**: Type definitions and PyTree structures
+* **valid**: Parameter validation using Pydantic models
 
 ## Package Organization
-* The **codes** are located in */src/cryoblob/*
-* The **notebooks** are located in */tutorials/*
+* The **codes** are located in `/src/cryoblob/`
+* The **notebooks** are located in `/tutorials/`
+
+## Documentation
+
+For detailed API documentation and tutorials, visit: [https://cryoblob.readthedocs.io](https://cryoblob.readthedocs.io)
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Authors
+
+- Debangshu Mukherjee (mukherjeed@ornl.gov)
+- Alexis N. Williams (williamsan@ornl.gov)

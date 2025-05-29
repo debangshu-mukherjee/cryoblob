@@ -17,6 +17,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.githubpages",
     "nbsphinx",
+    "myst_parser",
 ]
 
 templates_path = ["_templates"]
@@ -81,5 +82,11 @@ autodoc_mock_imports = [
     'chex',
 ]
 
-# Suppress warnings
-suppress_warnings = ['autodoc.import_error']
+# Source file suffixes
+source_suffix = {
+    '.rst': None,
+    '.md': 'myst_parser',
+}
+
+# Master document (index page)
+master_doc = 'index'
