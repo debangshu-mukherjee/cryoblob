@@ -1,3 +1,12 @@
+[![PyPI Downloads](https://static.pepy.tech/badge/cryoblob)](https://pepy.tech/projects/cryoblob)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/cryoblob.svg)](https://badge.fury.io/py/cryoblob)
+[![Documentation Status](https://readthedocs.org/projects/cryoblob/badge/?version=latest)](https://cryoblob.readthedocs.io/en/latest/?badge=latest)
+[![DOI](https://zenodo.org/badge/905915185.svg)](https://doi.org/10.5281/zenodo.14861992)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![codecov](https://codecov.io/gh/debangshu-mukherjee/cryoblob/branch/main/graph/badge.svg)](https://codecov.io/gh/debangshu-mukherjee/cryoblob)
+[![Tests](https://github.com/debangshu-mukherjee/cryoblob/workflows/Tests/badge.svg)](https://github.com/debangshu-mukherjee/cryoblob/actions)
+
 # cryoblob
 
 **cryoblob** is a JAX-based, JIT-compiled, scalable package for detection of amorphous blobs in low SNR cryo-EM images.
