@@ -1,6 +1,11 @@
 API Reference
 =============
 
+This section provides detailed documentation for all modules in the cryoblob package.
+
+Main Package
+------------
+
 .. automodule:: cryoblob
    :members:
    :undoc-members:
@@ -8,8 +13,8 @@ API Reference
    :imported-members:
    :member-order: bysource
 
-Adapt Module
-------------
+Adaptive Processing Module
+--------------------------
 
 .. automodule:: cryoblob.adapt
    :members:
@@ -17,8 +22,8 @@ Adapt Module
    :show-inheritance:
    :member-order: bysource
 
-Blobs Module
-------------
+Blob Detection Module
+---------------------
 
 .. automodule:: cryoblob.blobs
    :members:
@@ -26,8 +31,8 @@ Blobs Module
    :show-inheritance:
    :member-order: bysource
 
-Files Module
-------------
+File I/O Module
+---------------
 
 .. automodule:: cryoblob.files
    :members:
@@ -35,8 +40,8 @@ Files Module
    :show-inheritance:
    :member-order: bysource
 
-Image Module
-------------
+Image Processing Module
+-----------------------
 
 .. automodule:: cryoblob.image
    :members:
@@ -44,8 +49,8 @@ Image Module
    :show-inheritance:
    :member-order: bysource
 
-Plots Module
-------------
+Plotting Module
+---------------
 
 .. automodule:: cryoblob.plots
    :members:
@@ -53,10 +58,19 @@ Plots Module
    :show-inheritance:
    :member-order: bysource
 
-Types Module
-------------
+Type Definitions Module
+-----------------------
 
 .. automodule:: cryoblob.types
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :member-order: bysource
+
+Validation Module
+-----------------
+
+.. automodule:: cryoblob.valid
    :members:
    :undoc-members:
    :show-inheritance:
