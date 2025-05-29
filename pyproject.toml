@@ -54,6 +54,10 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
+    "nbsphinx>=0.9.7",
     "pytest>=8.3.5",
+    "sphinx>=7.4.7",
+    "sphinx-autobuild>=2024.10.3",
+    "sphinx-rtd-theme>=3.0.2",
     "twine>=6.1.0",
 ]
