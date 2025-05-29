@@ -1,6 +1,6 @@
 [project]
 name = "cryoblob"
-version = "2025.5.24"
+version = "2025.5.26"
 description = "Particle Picking of Cryo-EM Datasets"
 authors = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, {name = "Alexis N. Williams", email = "williamsan@ornl.gov"}]
 maintainers = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}]
@@ -9,7 +9,7 @@ keywords = [
     "cryoEM",
 ]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -60,6 +60,15 @@ dev = [
     "sphinx>=7.4.7",
     "sphinx-autobuild>=2024.10.3",
     "sphinx-rtd-theme>=3.0.2",
-    "tomli>=2.2.1",
     "twine>=6.1.0",
+]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=3.0.2", 
+    "nbsphinx>=0.9.7",
+    "myst-parser>=2.0.0",
+    "ipykernel>=6.29.5",
+    "nbconvert>=7.16.6",
 ]
