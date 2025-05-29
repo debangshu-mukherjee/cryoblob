@@ -14,7 +14,7 @@ clean:
 	rm -rf "$(BUILDDIR)"/*
 
 install-deps:
-	pip install sphinx sphinx-rtd-theme nbsphinx
+	pip install sphinx sphinx-rtd-theme nbsphinx myst-parser tomli
 
 html:
 	$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS)
