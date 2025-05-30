@@ -1,26 +1,24 @@
-# Makefile for cryoblob development
-
 .PHONY: help install test test-fast test-cov lint format clean build docs docs-serve
 
-help:  ## Show this help message
+help:  
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install:  ## Install package and all dependencies
+install:  
 	uv sync --all-extras
 
-install-dev:  ## Install development dependencies only
+install-dev: 
 	uv sync --extra dev
 
-test:  ## Run full test suite
+test:  
 	uv run pytest tests/ -v
 
-test-fast:  ## Run tests without coverage (faster)
+test-fast:  
 	uv run pytest tests/ -v --no-cov -x
 
-test-cov:  ## Run tests with coverage report
+test-cov:  
 	uv run pytest tests/ --cov=src/cryoblob --cov-report=html --cov-report=term-missing
 
-test-ci:  ## Run tests as in CI (with coverage and XML output)
+test-ci:  
 	uv run pytest tests/ \
 		--cov=src/cryoblob \
 		--cov-report=xml \
@@ -30,16 +28,16 @@ test-ci:  ## Run tests as in CI (with coverage and XML output)
 		--junitxml=test-results.xml \
 		-v
 
-lint:  ## Run linting checks
+lint:  
 	uv run black --check --diff src/ tests/
 
-format:  ## Format code with black
+format:  
 	uv run black src/ tests/
 
-type-check:  ## Run runtime type checking
+type-check:  
 	uv run python -c "import cryoblob; print('✅ Runtime type checking passed')"
 
-clean:  ## Clean build artifacts and cache
+clean:  
 	rm -rf build/
 	rm -rf dist/
 	rm -rf *.egg-info/
@@ -50,21 +48,20 @@ clean:  ## Clean build artifacts and cache
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-build:  ## Build package
+build:
 	uv build
 
-docs:  ## Build documentation
+docs:
 	cd docs && uv run make html
 
-docs-serve:  ## Serve documentation locally with auto-reload
+docs-serve:
 	cd docs && uv run make livehtml
 
-docs-clean:  ## Clean documentation build
+docs-clean:
 	cd docs && uv run make clean
 
-# Development workflow targets
-dev-setup: install format lint test  ## Complete development setup
+dev-setup: install format lint test
 
-check: lint type-check test-fast  ## Quick check before commit
+check: lint type-check test-fast
 
-ci: lint type-check test-ci build  ## Full CI pipeline locally
+ci: lint type-check test-ci build 

@@ -1,5 +1,3 @@
-# Makefile for building Sphinx documentation locally.
-
 SPHINXOPTS    = -W --keep-going
 SPHINXBUILD   = sphinx-build
 SOURCEDIR     = source
@@ -23,10 +21,8 @@ html:
 livehtml:
 	sphinx-autobuild "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) --host 0.0.0.0 --port 8000
 
-# Build with verbose output for debugging
 debug:
 	$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) -v
 
-# Check for broken links
 linkcheck:
 	$(SPHINXBUILD) -b linkcheck "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS)
