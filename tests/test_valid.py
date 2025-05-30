@@ -2,14 +2,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
-from pydantic import ValidationError
-
 from cryoblob.valid import (AdaptiveFilterConfig, BlobDetectionConfig,
                             FileProcessingConfig, MRCMetadata,
                             PreprocessingConfig, ValidationPipeline,
                             create_default_pipeline, create_fast_pipeline,
                             create_high_quality_pipeline,
                             validate_mrc_metadata)
+from pydantic import ValidationError
 
 
 class TestPreprocessingConfig:

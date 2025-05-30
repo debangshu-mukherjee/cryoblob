@@ -7,7 +7,7 @@ from jax import random
 
 jax.config.update("jax_enable_x64", True)
 
-from cryoblob.image import image_resizer, gaussian_kernel, wiener
+from cryoblob.image import gaussian_kernel, image_resizer, wiener
 
 if __name__ == "__main__":
     pytest.main([__file__])

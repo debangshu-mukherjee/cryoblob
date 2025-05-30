@@ -5,13 +5,12 @@ matplotlib.use("Agg")
 from unittest.mock import Mock, patch
 
 import chex
+import cryoblob as cb
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import matplotlib_scalebar.scalebar as sb
 import numpy as np
 from absl.testing import parameterized
-
-import cryoblob as cb
 from cryoblob.types import make_MRC_Image
 
 

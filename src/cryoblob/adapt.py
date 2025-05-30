@@ -19,11 +19,10 @@ import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple, Union
-from jax import lax
-from jaxtyping import Array, Float, jaxtyped
-
 from cryoblob.image import wiener
 from cryoblob.types import scalar_float, scalar_int
+from jax import lax
+from jaxtyping import Array, Float, jaxtyped
 
 jax.config.update("jax_enable_x64", True)
 

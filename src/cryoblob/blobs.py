@@ -25,12 +25,11 @@ import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple
-from jax import lax
-from jaxtyping import Array, Bool, Float, Integer, jaxtyped
-
 from cryoblob.image import (apply_gaussian_blur, image_resizer,
                             laplacian_of_gaussian, wiener)
 from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
+from jax import lax
+from jaxtyping import Array, Bool, Float, Integer, jaxtyped
 
 
 @jaxtyped(typechecker=beartype)

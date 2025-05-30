@@ -1,9 +1,8 @@
 import chex
+import cryoblob as cb
 import jax
 import jax.numpy as jnp
 from absl.testing import parameterized
-
-import cryoblob as cb
 from cryoblob.types import make_MRC_Image
 
 
