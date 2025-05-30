@@ -20,12 +20,27 @@ jobs:
     - name: Set up Python
       run: uv python install 3.11
       
+    - name: Install system dependencies
+      run: sudo apt-get update && sudo apt-get install -y make
+      
     - name: Install dependencies
       run: uv sync --extra docs
       
+    - name: Debug - Check environment
+      run: |
+        echo "Current directory:"
+        pwd
+        echo "Docs directory contents:"
+        ls -la docs/
+        echo "Python version:"
+        uv run python --version
+        echo "Sphinx version:"
+        uv run sphinx-build --version
+        
     - name: Build documentation
       run: |
         cd docs
+        echo "Building documentation..."
         uv run make html
         
     - name: Check for broken links
