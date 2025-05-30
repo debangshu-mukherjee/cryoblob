@@ -6,7 +6,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Tests](https://github.com/debangshu-mukherjee/cryoblob/workflows/Tests/badge.svg)](https://github.com/debangshu-mukherjee/cryoblob/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/debangshu-mukherjee/cryoblob/branch/main/graph/badge.svg)](https://codecov.io/gh/debangshu-mukherjee/cryoblob)
-[![Documentation](https://github.com/debangshu-mukherjee/cryoblob/workflows/Documentation/badge.svg)](https://github.com/debangshu-mukherjee/cryoblob/actions/workflows/docs.yml)
+[![Documentation](https://github.com/debangshu-mukherjee/cryoblob/actions/workflows/docs.yml/badge.svg)](https://github.com/debangshu-mukherjee/cryoblob/actions/workflows/docs.yml)
 [![Documentation Status](https://readthedocs.org/projects/cryoblob/badge/?version=latest)](https://cryoblob.readthedocs.io/en/latest/?badge=latest)
 
 # cryoblob
