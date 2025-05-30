@@ -1,24 +1,24 @@
 .PHONY: help install test test-fast test-cov lint format clean build docs docs-serve
 
-help:  
+help: 
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install:  
+install: 
 	uv sync --all-extras
 
 install-dev: 
 	uv sync --extra dev
 
-test:  
+test: 
 	uv run pytest tests/ -v
 
-test-fast:  
+test-fast: 
 	uv run pytest tests/ -v --no-cov -x
 
-test-cov:  
+test-cov: 
 	uv run pytest tests/ --cov=src/cryoblob --cov-report=html --cov-report=term-missing
 
-test-ci:  
+test-ci:
 	uv run pytest tests/ \
 		--cov=src/cryoblob \
 		--cov-report=xml \
@@ -28,16 +28,16 @@ test-ci:
 		--junitxml=test-results.xml \
 		-v
 
-lint:  
+lint: 
 	uv run black --check --diff src/ tests/
 
-format:  
+format: 
 	uv run black src/ tests/
 
-type-check:  
+type-check: 
 	uv run python -c "import cryoblob; print('✅ Runtime type checking passed')"
 
-clean:  
+clean: 
 	rm -rf build/
 	rm -rf dist/
 	rm -rf *.egg-info/
@@ -54,7 +54,7 @@ build:
 docs:
 	cd docs && uv run make html
 
-docs-serve:
+docs-serve: 
 	cd docs && uv run make livehtml
 
 docs-clean:
@@ -64,4 +64,4 @@ dev-setup: install format lint test
 
 check: lint type-check test-fast
 
-ci: lint type-check test-ci build 
+ci: lint type-check test-ci build

@@ -3,27 +3,20 @@ import re
 import sys
 from datetime import datetime
 
-# Add project root directory to sys.path (two levels up from docs/source)
 sys.path.insert(0, os.path.abspath("../../src"))
 sys.path.insert(0, os.path.abspath("../.."))
 
-# Check if we're on Read the Docs
 on_rtd = os.environ.get("READTHEDOCS") == "True"
 
-
-# Read project metadata from pyproject.toml
 def read_pyproject_toml():
     pyproject_path = os.path.abspath("../../pyproject.toml")
-
-    # If pyproject.toml doesn't exist, try different locations
     possible_paths = [
         pyproject_path,
         os.path.abspath(
             "../../../pyproject.toml"
-        ),  # In case we're in a different structure
+        ),
         os.path.abspath("./pyproject.toml"),
     ]
-
     for path in possible_paths:
         if os.path.exists(path):
             pyproject_path = path
@@ -33,13 +26,10 @@ def read_pyproject_toml():
         return {}
 
     try:
-        # Use tomllib (Python 3.11+)
         import tomllib
-
         with open(pyproject_path, "rb") as f:
             return tomllib.load(f)
     except ImportError:
-        # Fall back to manual parsing for older Python versions
         return parse_pyproject_manually(pyproject_path)
     except FileNotFoundError:
         print(f"Warning: Could not find pyproject.toml at {pyproject_path}")
@@ -47,7 +37,6 @@ def read_pyproject_toml():
     except Exception as e:
         print(f"Warning: Could not parse pyproject.toml: {e}")
         return {}
-
 
 def parse_pyproject_manually(filepath):
     """Simple manual parser for basic pyproject.toml values"""
@@ -58,18 +47,12 @@ def parse_pyproject_manually(filepath):
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
-
-            # Extract name
             name_match = re.search(r'name\s*=\s*["\']([^"\']+)["\']', content)
             if name_match:
                 data["project"]["name"] = name_match.group(1)
-
-            # Extract version
             version_match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
             if version_match:
                 data["project"]["version"] = version_match.group(1)
-
-            # Extract authors
             authors_matches = re.findall(
                 r'name\s*=\s*["\']([^"\']+)["\'].*?email\s*=\s*["\']([^"\']+)["\']',
                 content,
@@ -80,7 +63,6 @@ def parse_pyproject_manually(filepath):
                     {"name": name, "email": email} for name, email in authors_matches
                 ]
             else:
-                # Try just names
                 name_matches = re.findall(r'\{name\s*=\s*["\']([^"\']+)["\']', content)
                 if name_matches:
                     data["project"]["authors"] = [
@@ -93,16 +75,11 @@ def parse_pyproject_manually(filepath):
         return {"project": {}}
 
 
-# Get project metadata
 pyproject_data = read_pyproject_toml()
 project_info = pyproject_data.get("project", {})
-
-# Extract project information with fallbacks
 project = project_info.get("name", "cryoblob")
 version = project_info.get("version", "unknown")
 release = version
-
-# Extract authors
 authors_list = project_info.get("authors", [])
 if authors_list:
     author_names = [
@@ -110,9 +87,8 @@ if authors_list:
     ]
     author = ", ".join(author_names)
 else:
-    author = "Debangshu Mukherjee, Alexis N. Williams"  # Fallback
+    author = "Debangshu Mukherjee, Alexis N. Williams"
 
-# Set copyright with current year
 current_year = datetime.now().year
 copyright = f"{current_year}, {author}"
 
@@ -130,11 +106,8 @@ extensions = [
 
 templates_path = ["_templates"]
 exclude_patterns = []
-
 html_theme = "sphinx_rtd_theme"
 html_static_path = []
-
-# Napoleon settings for Google/NumPy style docstrings
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = False
@@ -150,7 +123,6 @@ napoleon_preprocess_types = False
 napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
-# Autodoc settings
 autodoc_default_options = {
     "members": True,
     "member-order": "bysource",
@@ -159,22 +131,18 @@ autodoc_default_options = {
     "exclude-members": "__weakref__",
 }
 
-# Type hints
 autodoc_typehints = "description"
 autodoc_typehints_description_target = "documented"
 
-# nbsphinx configuration for notebooks
-nbsphinx_execute = "never"  # Don't execute notebooks during build
+nbsphinx_execute = "never"
 nbsphinx_allow_errors = True
 
-# Intersphinx mapping for external docs
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "jax": ("https://jax.readthedocs.io/en/latest/", None),
 }
 
-# Mock imports for dependencies that might not be available during doc build
 autodoc_mock_imports = [
     "jax",
     "jax.numpy",
@@ -203,7 +171,6 @@ autodoc_mock_imports = [
     "absl.testing",
 ]
 
-# Additional RTD-specific mocking
 if on_rtd:
     autodoc_mock_imports.extend(
         [
@@ -212,11 +179,15 @@ if on_rtd:
         ]
     )
 
-# Source file suffixes
 source_suffix = {
     ".rst": None,
     ".md": "myst_parser",
 }
 
-# Master document (index page)
 master_doc = "index"
+
+suppress_warnings = [
+    'autodoc.import_error',
+    'toc.not_readable',
+    'docutils',
+]
