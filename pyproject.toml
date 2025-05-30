@@ -1,41 +1,42 @@
 [project]
 name = "cryoblob"
-version = "2025.5.26"
+version = "2025.5.27"
 description = "Particle Picking of Cryo-EM Datasets"
-authors = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, {name = "Alexis N. Williams", email = "williamsan@ornl.gov"}]
+authors = [
+    {name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, 
+    {name = "Alexis N. Williams", email = "williamsan@ornl.gov"},
+    {name = "Spenser R. Cox", email = "coxsr@ornl.gov"},
+    {name = "Marshall T. McDonell", email = "mcdonellmt@ornl.gov"},
+    {name = "Albina Y. Borisevich", email = "albinab@ornl.gov"}
+]
 maintainers = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}]
 keywords = [
-    "elecron microscopy", 
+    "electron microscopy", 
     "cryoEM",
+    "image processing",
+    "JAX",
+    "blob detection",
 ]
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
     "Typing :: Typed",
+    "Topic :: Scientific/Engineering :: Image Processing",
 ]
 license = "MIT"
-
 dependencies = [
     "mrcfile==1.5.0",
     "numpy>=1.13.0",
-    "matplotlib >= 2.2.0",
-    "matplotlib-scalebar >= 0.5.0",
-    "ipywidgets >= 8.1.0",
-    "tqdm >= 4.66.0",
-    "jaxtyping >= 0.2.33, < 0.3",
+    "matplotlib>=2.2.0",
+    "matplotlib-scalebar>=0.5.0",
+    "jaxtyping>=0.2.33,<0.3",
     "beartype",
     "pandas>=2.2.3",
-    "chex>=0.1.89",
-    "pytest>=8.3.5",
-    "nbsphinx>=0.9.7",
-    "nbconvert>=7.16.6",
-    "ipykernel>=6.29.5",
-    "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=3.0.2",
-    "build>=1.2.2.post1",
-    "black[jupyter]>=25.1.0",
+    "tqdm>=4.66.0",
     "pydantic>=2.11.5",
     "jax[cuda12]>=0.4.30 ; sys_platform == 'linux'",
     "jax>=0.4.30 ; sys_platform == 'win64'",
@@ -43,25 +44,9 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/debangshu-mukherjee/cryoblob"
-
-
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[dependency-groups]
-dev = [
-    "myst-parser>=3.0.1",
-    "nbsphinx>=0.9.7",
-    "pytest>=8.3.5",
-    "sphinx>=7.4.7",
-    "sphinx-autobuild>=2024.10.3",
-    "sphinx-rtd-theme>=3.0.2",
-    "twine>=6.1.0",
-]
+Documentation = "https://cryoblob.readthedocs.io"
+Repository = "https://github.com/debangshu-mukherjee/cryoblob"
+Issues = "https://github.com/debangshu-mukherjee/cryoblob/issues"
 
 [project.optional-dependencies]
 docs = [
@@ -71,4 +56,28 @@ docs = [
     "myst-parser>=2.0.0",
     "ipykernel>=6.29.5",
     "nbconvert>=7.16.6",
+    "sphinx-autobuild>=2024.10.3",
 ]
+test = [
+    "pytest>=8.3.5",
+    "chex>=0.1.89",
+]
+dev = [
+    "cryoblob[docs,test]",
+    "black[jupyter]>=25.1.0",
+    "build>=1.2.2.post1",
+    "twine>=6.1.0",
+    "ipywidgets>=8.1.0", 
+]
+notebooks = [
+    "ipywidgets>=8.1.0",
+    "ipykernel>=6.29.5",
+    "nbconvert>=7.16.6",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
