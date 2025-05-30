@@ -6,7 +6,7 @@ authors = [
     {name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, 
     {name = "Alexis N. Williams", email = "williamsan@ornl.gov"},
     {name = "Spenser R. Cox", email = "coxsr@ornl.gov"},
-    {name = "Marshall T. McDonell", email = "mcdonellmt@ornl.gov"},
+    {name = "Marshall T. McDonnell", email = "mcdonnellmt@ornl.gov"},
     {name = "Albina Y. Borisevich", email = "albinab@ornl.gov"}
 ]
 maintainers = [{name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}]
