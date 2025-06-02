@@ -18,6 +18,14 @@ Classes
     Validation for MRC file metadata
 - `ValidationPipeline`:
     Main pipeline class for validating all configurations
+- `RidgeDetectionConfig`:
+    Configuration for ridge detection parameters
+- `WatershedConfig`:
+    Configuration for watershed segmentation parameters
+- `EnhancedBlobDetectionConfig`:
+    Configuration for enhanced blob detection combining multiple methods
+- `HessianBlobConfig`:
+    Configuration for Hessian-based blob detection
 """
 
 from pathlib import Path
@@ -476,4 +484,369 @@ def validate_mrc_metadata(
         data_mean=data_mean,
         mode=mode,
         image_shape=image_shape,
+    )
+
+
+class RidgeDetectionConfig(BaseModel):
+    """
+    Configuration model for ridge detection parameters.
+
+    Validates parameters used for detecting elongated objects.
+    """
+
+    min_scale: PositiveFloat = Field(
+        default=1.0, le=50.0, description="Minimum scale for ridge detection"
+    )
+
+    max_scale: PositiveFloat = Field(
+        default=10.0, le=100.0, description="Maximum scale for ridge detection"
+    )
+
+    num_scales: PositiveInt = Field(
+        default=10, le=50, description="Number of scales to test"
+    )
+
+    ridge_threshold: PositiveFloat = Field(
+        default=0.01, le=1.0, description="Ridge strength threshold"
+    )
+
+    enable_multi_scale: bool = Field(
+        default=True, description="Use multi-scale ridge detection"
+    )
+
+    @field_validator("max_scale")
+    @classmethod
+    def validate_scale_range(cls, v: float, info) -> float:
+        """Ensure max_scale > min_scale."""
+        if hasattr(info, "data") and "min_scale" in info.data:
+            min_scale = info.data["min_scale"]
+            if v <= min_scale:
+                raise ValueError(f"max_scale ({v}) must be > min_scale ({min_scale})")
+        return v
+
+    class Config:
+        frozen = True
+        extra = "forbid"
+
+
+class WatershedConfig(BaseModel):
+    """
+    Configuration model for watershed segmentation parameters.
+
+    Validates parameters used for separating overlapping blobs.
+    """
+
+    min_marker_distance: PositiveFloat = Field(
+        default=5.0, le=50.0, description="Minimum distance between watershed markers"
+    )
+
+    flooding_iterations: PositiveInt = Field(
+        default=10, le=100, description="Number of flooding iterations"
+    )
+
+    enable_adaptive_markers: bool = Field(
+        default=True, description="Use adaptive marker generation"
+    )
+
+    distance_transform_method: str = Field(
+        default="euclidean",
+        pattern="^(euclidean|manhattan|chebyshev)$",
+        description="Distance transform method for marker generation",
+    )
+
+    marker_erosion_size: PositiveInt = Field(
+        default=3, le=15, description="Erosion size for marker refinement"
+    )
+
+    class Config:
+        frozen = True
+        extra = "forbid"
+
+
+class HessianBlobConfig(BaseModel):
+    """
+    Configuration model for Hessian-based blob detection.
+
+    Validates parameters for Determinant of Hessian blob detection.
+    """
+
+    scale_normalization: bool = Field(
+        default=True, description="Apply scale normalization to Hessian determinant"
+    )
+
+    eigenvalue_threshold: PositiveFloat = Field(
+        default=0.001, le=1.0, description="Eigenvalue threshold for blob detection"
+    )
+
+    boundary_enhancement: bool = Field(
+        default=True, description="Enhance blob boundaries using gradient information"
+    )
+
+    non_maximum_suppression: bool = Field(
+        default=True, description="Apply non-maximum suppression to detected blobs"
+    )
+
+    suppression_radius: PositiveFloat = Field(
+        default=2.0, le=20.0, description="Radius for non-maximum suppression"
+    )
+
+    class Config:
+        frozen = True
+        extra = "forbid"
+
+
+class EnhancedBlobDetectionConfig(BaseModel):
+    """
+    Configuration model for enhanced blob detection combining multiple methods.
+
+    This integrates circular blob detection, ridge detection, and watershed segmentation.
+    """
+
+    # Base blob detection parameters
+    min_blob_size: PositiveFloat = Field(
+        default=5.0, le=1000.0, description="Minimum blob size to detect"
+    )
+
+    max_blob_size: PositiveFloat = Field(
+        default=20.0, le=2000.0, description="Maximum blob size to detect"
+    )
+
+    blob_step: PositiveFloat = Field(
+        default=1.0, le=10.0, description="Step size between blob scales"
+    )
+
+    downscale: PositiveFloat = Field(
+        default=4.0, le=20.0, description="Image downscaling factor"
+    )
+
+    std_threshold: PositiveFloat = Field(
+        default=6.0, le=20.0, description="Standard deviation threshold for detection"
+    )
+
+    # Enhanced detection options
+    enable_ridge_detection: bool = Field(
+        default=True, description="Enable ridge detection for elongated objects"
+    )
+
+    enable_watershed: bool = Field(
+        default=True, description="Enable watershed segmentation for overlapping blobs"
+    )
+
+    enable_hessian_blobs: bool = Field(
+        default=False, description="Use Hessian-based blob detection instead of LoG"
+    )
+
+    # Method-specific configurations
+    ridge_config: Optional[RidgeDetectionConfig] = Field(
+        default_factory=RidgeDetectionConfig,
+        description="Ridge detection configuration",
+    )
+
+    watershed_config: Optional[WatershedConfig] = Field(
+        default_factory=WatershedConfig,
+        description="Watershed segmentation configuration",
+    )
+
+    hessian_config: Optional[HessianBlobConfig] = Field(
+        default_factory=HessianBlobConfig,
+        description="Hessian blob detection configuration",
+    )
+
+    # Post-processing options
+    merge_overlapping_detections: bool = Field(
+        default=True, description="Merge overlapping detections from different methods"
+    )
+
+    overlap_threshold: PositiveFloat = Field(
+        default=0.5,
+        le=1.0,
+        description="IoU threshold for merging overlapping detections",
+    )
+
+    confidence_weighting: bool = Field(
+        default=True, description="Weight detections by confidence scores"
+    )
+
+    @field_validator("max_blob_size")
+    @classmethod
+    def validate_blob_size_range(cls, v: float, info) -> float:
+        """Ensure max_blob_size > min_blob_size."""
+        if hasattr(info, "data") and "min_blob_size" in info.data:
+            min_size = info.data["min_blob_size"]
+            if v <= min_size:
+                raise ValueError(
+                    f"max_blob_size ({v}) must be > min_blob_size ({min_size})"
+                )
+        return v
+
+    @model_validator(mode="after")
+    def validate_method_dependencies(self):
+        """Ensure required configurations are present when methods are enabled."""
+        if self.enable_ridge_detection and self.ridge_config is None:
+            raise ValueError(
+                "ridge_config is required when enable_ridge_detection is True"
+            )
+
+        if self.enable_watershed and self.watershed_config is None:
+            raise ValueError(
+                "watershed_config is required when enable_watershed is True"
+            )
+
+        if self.enable_hessian_blobs and self.hessian_config is None:
+            raise ValueError(
+                "hessian_config is required when enable_hessian_blobs is True"
+            )
+
+        return self
+
+    def to_enhanced_kwargs(self) -> dict:
+        """
+        Convert configuration to kwargs dict for enhanced_blob_detection function.
+
+        Returns
+        -------
+        - kwargs: Dictionary compatible with enhanced_blob_detection function
+        """
+        base_kwargs = {
+            "min_blob_size": self.min_blob_size,
+            "max_blob_size": self.max_blob_size,
+            "blob_step": self.blob_step,
+            "downscale": self.downscale,
+            "std_threshold": self.std_threshold,
+            "use_ridge_detection": self.enable_ridge_detection,
+            "use_watershed": self.enable_watershed,
+        }
+
+        if self.ridge_config:
+            base_kwargs.update(
+                {
+                    "ridge_threshold": self.ridge_config.ridge_threshold,
+                }
+            )
+
+        if self.watershed_config:
+            base_kwargs.update(
+                {
+                    "min_marker_distance": self.watershed_config.min_marker_distance,
+                }
+            )
+
+        return base_kwargs
+
+    class Config:
+        frozen = True
+        extra = "forbid"
+
+
+class BlobAnalysisConfig(BaseModel):
+    """
+    Configuration for blob analysis and post-processing.
+
+    Validates parameters for analyzing detected blobs and combining results.
+    """
+
+    size_filtering: bool = Field(
+        default=True, description="Filter blobs by size constraints"
+    )
+
+    aspect_ratio_filtering: bool = Field(
+        default=True, description="Filter blobs by aspect ratio"
+    )
+
+    min_aspect_ratio: PositiveFloat = Field(
+        default=0.1, le=1.0, description="Minimum aspect ratio for valid blobs"
+    )
+
+    max_aspect_ratio: PositiveFloat = Field(
+        default=10.0, ge=1.0, description="Maximum aspect ratio for valid blobs"
+    )
+
+    circularity_filtering: bool = Field(
+        default=False, description="Filter blobs by circularity"
+    )
+
+    min_circularity: PositiveFloat = Field(
+        default=0.1, le=1.0, description="Minimum circularity for valid blobs"
+    )
+
+    convexity_filtering: bool = Field(
+        default=False, description="Filter blobs by convexity"
+    )
+
+    min_convexity: PositiveFloat = Field(
+        default=0.5, le=1.0, description="Minimum convexity for valid blobs"
+    )
+
+    inertia_filtering: bool = Field(
+        default=False, description="Filter blobs by inertia ratio"
+    )
+
+    min_inertia_ratio: PositiveFloat = Field(
+        default=0.01, le=1.0, description="Minimum inertia ratio for valid blobs"
+    )
+
+    class Config:
+        frozen = True
+        extra = "forbid"
+
+
+# Factory functions for common enhanced configurations
+def create_elongated_objects_pipeline() -> EnhancedBlobDetectionConfig:
+    """Create a pipeline optimized for elongated objects."""
+    return EnhancedBlobDetectionConfig(
+        enable_ridge_detection=True,
+        enable_watershed=False,
+        enable_hessian_blobs=True,
+        ridge_config=RidgeDetectionConfig(
+            min_scale=2.0, max_scale=15.0, num_scales=15, ridge_threshold=0.005
+        ),
+        hessian_config=HessianBlobConfig(
+            boundary_enhancement=True,
+            non_maximum_suppression=True,
+            suppression_radius=3.0,
+        ),
+    )
+
+
+def create_overlapping_blobs_pipeline() -> EnhancedBlobDetectionConfig:
+    """Create a pipeline optimized for overlapping blobs."""
+    return EnhancedBlobDetectionConfig(
+        enable_ridge_detection=False,
+        enable_watershed=True,
+        enable_hessian_blobs=True,
+        watershed_config=WatershedConfig(
+            min_marker_distance=3.0,
+            flooding_iterations=15,
+            enable_adaptive_markers=True,
+        ),
+        hessian_config=HessianBlobConfig(
+            boundary_enhancement=True, eigenvalue_threshold=0.0005
+        ),
+        merge_overlapping_detections=True,
+        overlap_threshold=0.3,
+    )
+
+
+def create_comprehensive_pipeline() -> EnhancedBlobDetectionConfig:
+    """Create a comprehensive pipeline using all methods."""
+    return EnhancedBlobDetectionConfig(
+        enable_ridge_detection=True,
+        enable_watershed=True,
+        enable_hessian_blobs=True,
+        ridge_config=RidgeDetectionConfig(
+            min_scale=1.5, max_scale=12.0, num_scales=12, ridge_threshold=0.008
+        ),
+        watershed_config=WatershedConfig(
+            min_marker_distance=4.0,
+            flooding_iterations=12,
+            enable_adaptive_markers=True,
+        ),
+        hessian_config=HessianBlobConfig(
+            boundary_enhancement=True,
+            non_maximum_suppression=True,
+            suppression_radius=2.5,
+        ),
+        merge_overlapping_detections=True,
+        overlap_threshold=0.4,
+        confidence_weighting=True,
     )

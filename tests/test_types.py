@@ -3,8 +3,13 @@ import jax
 import jax.numpy as jnp
 import pytest
 from absl.testing import parameterized
-from cryoblob.types import (MRC_Image, make_MRC_Image, scalar_float,
-                            scalar_int, scalar_num)
+from cryoblob.types import (
+    MRC_Image,
+    make_MRC_Image,
+    scalar_float,
+    scalar_int,
+    scalar_num,
+)
 from jax import tree_util
 
 

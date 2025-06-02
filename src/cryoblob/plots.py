@@ -19,10 +19,11 @@ import matplotlib_scalebar.scalebar as sb
 import numpy as np
 from beartype import beartype
 from beartype.typing import Optional, Tuple
-from cryoblob.types import MRC_Image, scalar_int
 from jaxtyping import Array, Float
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+
+from cryoblob.types import MRC_Image, scalar_int
 
 
 @beartype

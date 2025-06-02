@@ -82,6 +82,28 @@ Submodules
     - `wiener`:
         Perform Wiener filtering on an image using JAX.
 
+- `multi`:
+    Multi-method blob detection for elongated objects and overlapping blobs.
+    The functions are:
+    - `hessian_matrix_2d`:
+        Compute Hessian matrix components for 2D image at given scale.
+    - `determinant_of_hessian`:
+        Compute Determinant of Hessian for blob detection with better boundary detection.
+    - `ridge_detection`:
+        Detect elongated objects using ridge detection with eigenvalue analysis.
+    - `multi_scale_ridge_detector`:
+        Multi-scale ridge detection for various elongated object sizes.
+    - `distance_transform_euclidean`:
+        Compute Euclidean distance transform for watershed marker generation.
+    - `watershed_segmentation`:
+        Segment overlapping blobs using marker-based watershed algorithm.
+    - `adaptive_marker_generation`:
+        Generate watershed markers using distance transform and local maxima.
+    - `hessian_blob_detection`:
+        Detect blobs using Determinant of Hessian for better boundary detection.
+    - `enhanced_blob_detection`:
+        Combined approach using Hessian, ridge detection, and watershed segmentation.
+
 - `plots`:
     Plotting functions for visualizing MRC images
     and blob detection results.
@@ -123,6 +145,14 @@ Submodules
         Validation for MRC file metadata
     - `ValidationPipeline`:
         Main pipeline class for validating all configurations
+    - `RidgeDetectionConfig`:
+        Configuration for ridge detection parameters
+    - `WatershedConfig`:
+        Configuration for watershed segmentation parameters
+    - `EnhancedBlobDetectionConfig`:
+        Configuration for enhanced multi-method blob detection
+    - `HessianBlobConfig`:
+        Configuration for Hessian-based blob detection
 
 """
 
@@ -130,6 +160,7 @@ from .adapt import *
 from .blobs import *
 from .files import *
 from .image import *
+from .multi import *
 from .plots import *
 from .types import *
 from .valid import *
