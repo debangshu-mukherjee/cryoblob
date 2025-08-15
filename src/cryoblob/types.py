@@ -30,7 +30,6 @@ Factory Functions
     Factory function to create an MRC_Image instance.
 """
 
-import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import NamedTuple, TypeAlias, Union
 from jax.tree_util import register_pytree_node_class

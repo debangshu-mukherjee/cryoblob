@@ -303,7 +303,7 @@ def process_batch_of_files(
 @jaxtyped(typechecker=beartype)
 def folder_blobs(
     folder_location: str,
-    file_type: Optional[Literal["mrc"]] = "mrc",
+    file_type: Optional[Literal[" mrc"]] = "mrc",
     blob_downscale: Optional[scalar_float] = 7.0,
     target_memory_gb: Optional[scalar_float] = 4.0,
     stream_large_files: Optional[bool] = True,
@@ -485,46 +485,20 @@ def estimate_batch_size(
     >>> print(f"Recommended batch size: {batch_size}")
     """
     try:
-        file_size_bytes: scalar_float = float(os.path.getsize(sample_file_path))
-
         with mrcfile.open(sample_file_path, mode="r", permissive=True) as mrc:
             data_shape: tuple = mrc.data.shape
-            data_dtype: str = str(mrc.data.dtype)
-
-            dtype_bytes: scalar_int
-            if "float64" in data_dtype:
-                dtype_bytes = 8
-            elif "float32" in data_dtype:
-                dtype_bytes = 4
-            elif "int32" in data_dtype:
-                dtype_bytes = 4
-            elif "int16" in data_dtype:
-                dtype_bytes = 2
-            elif "int8" in data_dtype or "uint8" in data_dtype:
-                dtype_bytes = 1
-            else:
-                dtype_bytes = 4
-
             array_elements: scalar_int = int(jnp.prod(jnp.array(data_shape)))
-            base_memory_bytes: scalar_float = float(array_elements * dtype_bytes)
-
             jax_memory_bytes: scalar_float = float(array_elements * 8)
-
             per_file_memory: scalar_float = jax_memory_bytes * processing_overhead
-
             target_memory_bytes: scalar_float = target_memory_gb * 1e9
             available_memory: scalar_float = target_memory_bytes * safety_factor
-
             estimated_batch_size: scalar_float = available_memory / per_file_memory
             batch_size: scalar_int = max(1, int(jnp.floor(estimated_batch_size)))
-
             min_batch_size: scalar_int = 1
             max_batch_size: scalar_int = 50
-
             final_batch_size: scalar_int = max(
                 min_batch_size, min(batch_size, max_batch_size)
             )
-
             return final_batch_size
 
     except Exception as e:

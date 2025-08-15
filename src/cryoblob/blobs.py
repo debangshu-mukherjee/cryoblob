@@ -28,8 +28,12 @@ from beartype.typing import Optional, Tuple
 from jax import lax
 from jaxtyping import Array, Bool, Float, Integer, jaxtyped
 
-from cryoblob.image import (apply_gaussian_blur, image_resizer,
-                            laplacian_of_gaussian, wiener)
+from cryoblob.image import (
+    apply_gaussian_blur,
+    image_resizer,
+    laplacian_of_gaussian,
+    wiener,
+)
 from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
 
 
@@ -323,8 +327,8 @@ def blob_list_log(
         Columns represent (Y, X, Blob size in pixels).
     """
     image: Float[Array, "H W"] = (mrc_image.image_data).astype(jnp.float32)
-    voxel_size: Float[Array, "3"] = mrc_image.voxel_size
-    peak_range: Float[Array, "scales"] = jnp.arange(
+    voxel_size: Float[Array, " 3"] = mrc_image.voxel_size
+    peak_range: Float[Array, " scales"] = jnp.arange(
         min_blob_size, max_blob_size, blob_step
     )
     scaled_image: Float[Array, "h w"] = image_resizer(image, downscale)

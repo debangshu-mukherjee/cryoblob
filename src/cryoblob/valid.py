@@ -147,7 +147,7 @@ class FileProcessingConfig(BaseModel):
 
     folder_location: Path = Field(description="Path to folder containing images")
 
-    file_type: Literal["mrc", "tiff", "png", "jpg"] = Field(
+    file_type: Literal[" mrc", " tiff", " png", " jpg"] = Field(
         default="mrc", description="File type to process"
     )
 

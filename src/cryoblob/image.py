@@ -118,7 +118,7 @@ def resize_x(
     """
     orig_x_len: int = x_image.shape[1]
 
-    def resize_column(col: Float[Array, "x"]) -> Float[Array, "new_x"]:
+    def resize_column(col: Float[Array, " x"]) -> Float[Array, " new_x"]:
         """
         Resize a single 1D column using cumulative area-based resampling.
         """
@@ -196,7 +196,7 @@ def apply_gaussian_blur(
     image: Real[Array, "y x"],
     sigma: Optional[scalar_float] = 1.0,
     kernel_size: Optional[scalar_int] = 5,
-    mode: Literal["full", "valid", "same"] = "same",
+    mode: Literal[" full", " valid", " same"] = "same",
 ) -> Float[Array, "yp xp"]:
     """
     Description
@@ -348,9 +348,6 @@ def laplacian_of_gaussian(
     - Convolve the image with LoG kernel.
     - Normalize output if required.
     """
-    kerneL_extent: scalar_int = (
-        (jnp.multiply(jnp.round(standard_deviation), 3) // 2) * 2
-    ) + 1
     kernel_size: int = 101
     coords: Float[Array, "kernel_size"] = jnp.arange(-kernel_size, kernel_size, 1)
     x: Float[Array, "kernel_size kernel_size"]
@@ -535,7 +532,7 @@ def histogram(
     image: Real[Array, "..."],
     bins: Optional[scalar_int] = 256,
     range_limits: Optional[Tuple[scalar_float, scalar_float]] = None,
-) -> Num[Array, "bins"]:
+) -> Num[Array, " bins"]:
     """
     Calculate histogram from input image data.
 
@@ -553,7 +550,7 @@ def histogram(
     - `hist` (Num[Array, "bins"]):
         Histogram counts per bin.
     """
-    flat_image: Real[Array, "n"] = image.ravel()
+    flat_image: Real[Array, "     n"] = image.ravel()
     range_limits: Tuple[scalar_float, scalar_float] = jax.lax.cond(
         range_limits is None,
         lambda _: (
@@ -603,12 +600,12 @@ def equalize_hist(
     img_range: scalar_float = jnp.amax(image) - img_min
     normalized: Float[Array, "h w"] = (image - img_min) / jnp.maximum(img_range, 1e-8)
 
-    flat_normalized: Real[Array, "h*w"] = normalized.ravel()
-    flat_mask_default: Bool[Array, "h*w"] = jnp.ones_like(flat_normalized, dtype=bool)
+    flat_normalized: Real[Array, " h*w"] = normalized.ravel()
+    flat_mask_default: Bool[Array, " h*w"] = jnp.ones_like(flat_normalized, dtype=bool)
 
     has_mask: bool = mask is not None
 
-    safe_mask: Bool[Array, "h*w"] = jax.lax.cond(
+    safe_mask: Bool[Array, " h*w"] = jax.lax.cond(
         has_mask,
         lambda m: m.ravel().astype(bool),
         lambda _: flat_mask_default,
@@ -617,12 +614,12 @@ def equalize_hist(
 
     masked_pixels = jnp.where(safe_mask, flat_normalized, -1.0)
 
-    hist: Num[Array, "bins"] = histogram(
+    hist: Num[Array, " bins"] = histogram(
         masked_pixels, bins=nbins, range_limits=(0.0, 1.0)
     )
 
     hist = jnp.where(hist < 0, 0, hist)
-    cdf: Float[Array, "bins"] = jnp.cumsum(hist).astype(jnp.float32)
+    cdf: Float[Array, " bins"] = jnp.cumsum(hist).astype(jnp.float32)
     cdf = cdf / jnp.maximum(cdf[-1], 1e-8)
 
     def interp(v: scalar_float) -> scalar_float:
@@ -698,14 +695,14 @@ def equalize_adapthist(
     )
 
     def process_block(block: Float[Array, "kh kw"]) -> Float[Array, "kh kw"]:
-        hist: Float[Array, "bins"] = histogram(
+        hist: Float[Array, " bins"] = histogram(
             block, bins=nbins, range_limits=(0.0, 1.0)
         ).astype(jnp.float32)
         clip_val: scalar_float = (clip_limit * block.size) / nbins
         excess: scalar_float = jnp.sum(jnp.clip(hist - clip_val, 0))
         gain: scalar_float = excess / block.size
-        hist_clipped: Float[Array, "bins"] = jnp.clip(hist, 0, clip_val) + gain
-        cdf: Float[Array, "bins"] = jnp.cumsum(hist_clipped) / jnp.sum(hist_clipped)
+        hist_clipped: Float[Array, " bins"] = jnp.clip(hist, 0, clip_val) + gain
+        cdf: Float[Array, " bins"] = jnp.cumsum(hist_clipped) / jnp.sum(hist_clipped)
         bin_idx: Integer[Array, "kh kw"] = jnp.clip(
             jnp.floor(block * (nbins - 1)).astype(jnp.int32), 0, nbins - 2
         )

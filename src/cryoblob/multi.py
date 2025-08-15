@@ -278,8 +278,8 @@ def distance_transform_euclidean(
     y_coords, x_coords = jnp.meshgrid(jnp.arange(h), jnp.arange(w), indexing="ij")
 
     foreground_mask: Bool[Array, "h w"] = binary_image
-    foreground_y: Float[Array, "n"] = y_coords[foreground_mask]
-    foreground_x: Float[Array, "n"] = x_coords[foreground_mask]
+    foreground_y: Float[Array, " n"] = y_coords[foreground_mask]
+    foreground_x: Float[Array, " n"] = x_coords[foreground_mask]
 
     def compute_min_distance_to_foreground(
         y: scalar_int, x: scalar_int
@@ -287,7 +287,7 @@ def distance_transform_euclidean(
         if len(foreground_y) == 0:
             return jnp.inf
 
-        distances: Float[Array, "n"] = jnp.sqrt(
+        distances: Float[Array, " n"] = jnp.sqrt(
             (foreground_y - y) ** 2 + (foreground_x - x) ** 2
         )
         return jnp.min(distances)
@@ -358,8 +358,7 @@ def adaptive_marker_generation(
             )
 
     labeled_markers: Integer[Array, "h w"]
-    num_markers: scalar_int
-    labeled_markers, num_markers = find_connected_components(local_maxima)
+    labeled_markers, _ = find_connected_components(local_maxima)
 
     markers: Integer[Array, "h w"] = jnp.where(
         binary_image & (labeled_markers == 0), 0, labeled_markers
@@ -430,10 +429,10 @@ def watershed_segmentation(
                         ]
                     )
 
-                    positive_neighbors: Integer[Array, "m"] = neighbors[neighbors > 0]
+                    positive_neighbors: Integer[Array, " m"] = neighbors[neighbors > 0]
 
                     if len(positive_neighbors) > 0:
-                        unique_labels: Integer[Array, "k"] = jnp.unique(
+                        unique_labels: Integer[Array, " k"] = jnp.unique(
                             positive_neighbors
                         )
 
@@ -494,7 +493,7 @@ def hessian_blob_detection(
     """
     image: Float[Array, "H W"] = mrc_image.image_data.astype(jnp.float32)
     voxel_size: Float[Array, "3"] = mrc_image.voxel_size
-    scales: Float[Array, "num_scales"] = jnp.arange(
+    scales: Float[Array, " num_scales"] = jnp.arange(
         min_blob_size, max_blob_size, blob_step
     )
 
@@ -654,7 +653,7 @@ def enhanced_blob_detection(
             ]
         )
 
-        scaled_blob_radii: Float[Array, "n"] = circular_blobs[:, 2] / (
+        scaled_blob_radii: Float[Array, " n"] = circular_blobs[:, 2] / (
             2 * jnp.sqrt(voxel_size[1] * voxel_size[2])
         )
 
@@ -689,7 +688,7 @@ def enhanced_blob_detection(
             gradient_magnitude, markers, max_iterations=12
         )
 
-        unique_labels: Integer[Array, "unique_count"] = jnp.unique(
+        unique_labels: Integer[Array, " unique_count"] = jnp.unique(
             watershed_labels[watershed_labels > 0]
         )
 
