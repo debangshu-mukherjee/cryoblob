@@ -8,13 +8,12 @@ sys.path.insert(0, os.path.abspath("../.."))
 
 on_rtd = os.environ.get("READTHEDOCS") == "True"
 
+
 def read_pyproject_toml():
     pyproject_path = os.path.abspath("../../pyproject.toml")
     possible_paths = [
         pyproject_path,
-        os.path.abspath(
-            "../../../pyproject.toml"
-        ),
+        os.path.abspath("../../../pyproject.toml"),
         os.path.abspath("./pyproject.toml"),
     ]
     for path in possible_paths:
@@ -27,6 +26,7 @@ def read_pyproject_toml():
 
     try:
         import tomllib
+
         with open(pyproject_path, "rb") as f:
             return tomllib.load(f)
     except ImportError:
@@ -37,6 +37,7 @@ def read_pyproject_toml():
     except Exception as e:
         print(f"Warning: Could not parse pyproject.toml: {e}")
         return {}
+
 
 def parse_pyproject_manually(filepath):
     """Simple manual parser for basic pyproject.toml values"""
@@ -187,7 +188,7 @@ source_suffix = {
 master_doc = "index"
 
 suppress_warnings = [
-    'autodoc.import_error',
-    'toc.not_readable',
-    'docutils',
+    "autodoc.import_error",
+    "toc.not_readable",
+    "docutils",
 ]

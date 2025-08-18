@@ -1,6 +1,6 @@
 """
 Module: cryoblob
----------------------------
+----------------
 
 JAX based, JIT compiled, scalable codes for
 detection of amorphous blobs in low SNR cryo-EM
@@ -121,6 +121,8 @@ Submodules
     - `scalar_num`:
         Zero dimensional number, that can either be a
         floating point number or an integer.
+    - `scalar_bool`:
+        Zero dimensional boolean.
     - `non_jax_number`:
         A number that is not a JAX array. This is because
         even single number are stored as 0D JAX arrays.
@@ -143,8 +145,6 @@ Submodules
         Configuration for file processing and batch operations
     - `MRCMetadata`:
         Validation for MRC file metadata
-    - `ValidationPipeline`:
-        Main pipeline class for validating all configurations
     - `RidgeDetectionConfig`:
         Configuration for ridge detection parameters
     - `WatershedConfig`:
@@ -156,75 +156,35 @@ Submodules
 
 """
 
-from .adapt import adaptive_wiener, adaptive_threshold
-from .blobs import (
-    find_connected_components,
-    center_of_mass_3d,
-    find_particle_coords,
-    preprocessing,
-    blob_list_log,
-)
-from .files import (
-    file_params,
-    load_mrc,
-    process_single_file,
-    process_batch_of_files,
-    folder_blobs,
-    estimate_batch_size,
-    estimate_memory_usage,
-    get_optimal_batch_size,
-)
-from .image import (
-    image_resizer,
-    resize_x,
-    gaussian_kernel,
-    apply_gaussian_blur,
-    difference_of_gaussians,
-    laplacian_of_gaussian,
-    exponential_kernel,
-    perona_malik,
-    histogram,
-    equalize_hist,
-    equalize_adapthist,
-    wiener,
-)
-from .multi import (
-    hessian_matrix_2d,
-    determinant_of_hessian,
-    ridge_detection,
-    multi_scale_ridge_detector,
-    distance_transform_euclidean,
-    watershed_segmentation,
-    adaptive_marker_generation,
-    hessian_blob_detection,
-    enhanced_blob_detection,
-)
+from .adapt import adaptive_threshold, adaptive_wiener
+from .blobs import (blob_list_log, center_of_mass_3d,
+                    find_connected_components, find_particle_coords,
+                    preprocessing)
+from .files import (estimate_batch_size, estimate_memory_usage, file_params,
+                    folder_blobs, get_optimal_batch_size, load_mrc,
+                    process_batch_of_files, process_single_file)
+from .image import (apply_gaussian_blur, difference_of_gaussians,
+                    equalize_adapthist, equalize_hist, exponential_kernel,
+                    gaussian_kernel, histogram, image_resizer,
+                    laplacian_of_gaussian, perona_malik, resize_x, wiener)
+from .multi import (adaptive_marker_generation, determinant_of_hessian,
+                    distance_transform_euclidean, enhanced_blob_detection,
+                    hessian_blob_detection, hessian_matrix_2d,
+                    multi_scale_ridge_detector, ridge_detection,
+                    watershed_segmentation)
 from .plots import plot_mrc
-from .types import (
-    scalar_float, scalar_int, scalar_num, non_jax_number, 
-    MRC_Image,
-    PreprocessingConfig,
-    BlobDetectionConfig,
-    FileProcessingConfig,
-    MRCMetadata,
-    RidgeDetectionConfig,
-    WatershedConfig,
-    EnhancedBlobDetectionConfig,
-    HessianBlobConfig,
-    AdaptiveFilterConfig,
-)
-from .valid import (
-    make_preprocessing_config,
-    make_blob_detection_config,
-    make_file_processing_config,
-    make_mrc_image,
-    make_mrc_metadata,
-    make_adaptive_filter_config,
-    make_ridge_detection_config,
-    make_watershed_config,
-    make_hessian_blob_config,
-    make_enhanced_blob_detection_config,
-)
+from .types import (AdaptiveFilterConfig, BlobDetectionConfig,
+                    EnhancedBlobDetectionConfig, FileProcessingConfig,
+                    HessianBlobConfig, MRC_Image, MRCMetadata,
+                    PreprocessingConfig, RidgeDetectionConfig, WatershedConfig,
+                    non_jax_number, scalar_bool, scalar_float, scalar_int,
+                    scalar_num)
+from .valid import (make_adaptive_filter_config, make_blob_detection_config,
+                    make_enhanced_blob_detection_config,
+                    make_file_processing_config, make_hessian_blob_config,
+                    make_mrc_image, make_mrc_metadata,
+                    make_preprocessing_config, make_ridge_detection_config,
+                    make_watershed_config)
 
 __all__: list[str] = [
     "adaptive_wiener",
@@ -268,6 +228,7 @@ __all__: list[str] = [
     "scalar_float",
     "scalar_int",
     "scalar_num",
+    "scalar_bool",
     "non_jax_number",
     "MRC_Image",
     "PreprocessingConfig",

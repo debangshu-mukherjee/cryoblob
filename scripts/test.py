@@ -1,4 +1,3 @@
-
 """
 Test runner script for local development.
 """
@@ -7,13 +6,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def run_command(cmd: list[str], description: str) -> bool:
     """Run a command and return True if successful."""
     print(f"\n{'='*60}")
     print(f"Running: {description}")
     print(f"Command: {' '.join(cmd)}")
     print(f"{'='*60}")
-    
+
     try:
         result = subprocess.run(cmd, check=True, capture_output=False)
         print(f"✅ {description} passed")
@@ -22,16 +22,31 @@ def run_command(cmd: list[str], description: str) -> bool:
         print(f"❌ {description} failed with exit code {e.returncode}")
         return False
 
+
 def main():
     """Run the full test suite."""
     root_dir = Path(__file__).parent.parent
     success = True
     import os
+
     os.chdir(root_dir)
     test_commands = [
-        (["uv", "run", "black", "--check", "--diff", "src/", "tests/"], "Code formatting check"),
+        (
+            ["uv", "run", "black", "--check", "--diff", "src/", "tests/"],
+            "Code formatting check",
+        ),
         (["uv", "run", "pytest", "tests/", "-v", "--tb=short"], "Unit tests"),
-        (["uv", "run", "pytest", "tests/", "--cov=src/cryoblob", "--cov-report=term-missing"], "Tests with coverage"),
+        (
+            [
+                "uv",
+                "run",
+                "pytest",
+                "tests/",
+                "--cov=src/cryoblob",
+                "--cov-report=term-missing",
+            ],
+            "Tests with coverage",
+        ),
     ]
     for cmd, description in test_commands:
         if not run_command(cmd, description):
@@ -43,6 +58,7 @@ def main():
     else:
         print("💥 Some tests failed!")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

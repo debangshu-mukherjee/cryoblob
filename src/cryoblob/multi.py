@@ -32,12 +32,11 @@ import jax
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Tuple
-from jax import lax
-from jaxtyping import Array, Bool, Float, Integer, jaxtyped
-
 from cryoblob.blobs import center_of_mass_3d, find_connected_components
 from cryoblob.image import apply_gaussian_blur, image_resizer
 from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
+from jax import lax
+from jaxtyping import Array, Bool, Float, Integer, jaxtyped
 
 jax.config.update("jax_enable_x64", True)
 

@@ -4,12 +4,11 @@ watershed segmentation, and enhanced blob detection methods.
 """
 
 import chex
+import cryoblob as cb
 import jax
 import jax.numpy as jnp
 import pytest
 from absl.testing import parameterized
-
-import cryoblob as cb
 from cryoblob.types import make_MRC_Image
 
 jax.config.update("jax_enable_x64", True)

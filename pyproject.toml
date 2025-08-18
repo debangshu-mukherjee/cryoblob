@@ -42,9 +42,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/debangshu-mukherjee/cryoblob"
-Documentation = "https://cryoblob.readthedocs.io"
-Repository = "https://github.com/debangshu-mukherjee/cryoblob"
+Homepage = "https://github.com/debangshu-mukherjee/cryoblob/"
+Documentation = "https://cryoblob.readthedocs.io/"
+Repository = "https://github.com/debangshu-mukherjee/cryoblob/"
 Issues = "https://github.com/debangshu-mukherjee/cryoblob/issues"
 
 [tool.ruff]
