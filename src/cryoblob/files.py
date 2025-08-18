@@ -41,12 +41,11 @@ from beartype import beartype
 from beartype.typing import Dict, List, Literal, Optional, Tuple, Union
 from jax import device_get, device_put, vmap
 from jaxtyping import Array, Float, jaxtyped
-from pydantic import ValidationError
 from tqdm.auto import tqdm
 
 from cryoblob.blobs import blob_list_log, preprocessing
-from cryoblob.types import MRC_Image, make_MRC_Image, scalar_float, scalar_int
-from cryoblob.valid import PreprocessingConfig
+from cryoblob.types import MRC_Image, scalar_float, scalar_int, PreprocessingConfig
+from cryoblob.valid import make_preprocessing_config, make_mrc_image
 
 jax.config.update("jax_enable_x64", True)
 
@@ -140,7 +139,7 @@ def load_mrc(filepath: str) -> MRC_Image:
         data_max = jnp.array(mrc.header.dmax)
         data_mean = jnp.array(mrc.header.dmean)
         mode = jnp.array(mrc.header.mode)
-    MRC_data: MRC_Image = make_MRC_Image(
+    MRC_data: MRC_Image = make_mrc_image(
         image_data=data,
         voxel_size=voxel_size,
         origin=origin,
@@ -215,7 +214,7 @@ def process_single_file(
 
         im_data = device_put(im_data)
 
-        mrc_image: MRC_Image = make_MRC_Image(
+        mrc_image: MRC_Image = make_mrc_image(
             image_data=im_data,
             voxel_size=jnp.array([1.0, y_calib, x_calib]),
             origin=jnp.zeros(3),
@@ -235,7 +234,7 @@ def process_single_file(
             apply_filter=preprocessing_config.apply_filter,
         )
 
-        preprocessed_mrc: MRC_Image = make_MRC_Image(
+        preprocessed_mrc: MRC_Image = make_mrc_image(
             image_data=preprocessed_imdata,
             voxel_size=mrc_image.voxel_size,
             origin=mrc_image.origin,
@@ -365,12 +364,9 @@ def folder_blobs(
     }
     combined_kwargs: Dict[str, Union[bool, int]] = {**default_kwargs, **kwargs}
 
-    try:
-        preprocessing_config: PreprocessingConfig = PreprocessingConfig(
-            **combined_kwargs
-        )
-    except ValidationError as e:
-        raise ValueError(f"Invalid preprocessing parameters: {e}")
+    preprocessing_config: PreprocessingConfig = make_preprocessing_config(
+        **combined_kwargs
+    )
 
     file_pattern: str = folder_location + "*." + file_type
     file_list: List[str] = glob.glob(file_pattern)

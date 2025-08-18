@@ -37,7 +37,6 @@ dependencies = [
     "beartype",
     "pandas>=2.2.3",
     "tqdm>=4.66.0",
-    "pydantic>=2.11.5",
     "jax[cuda12]>=0.4.30 ; sys_platform == 'linux'",
     "jax>=0.4.30 ; sys_platform == 'win64'",
 ]

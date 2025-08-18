@@ -1,852 +1,687 @@
 """
 Module: valid
 -------------
-Pydantic models for data validation and configuration management
+JAX PyTree factory functions for configuration management
 in the cryoblob preprocessing pipeline. This module provides
-type-safe validation for preprocessing parameters, file paths,
+type-safe validation using JAX's functional approach with
+jax.lax.cond for preprocessing parameters, file paths,
 and blob detection configurations.
 
-Classes
--------
-- `PreprocessingConfig`:
-    Configuration for image preprocessing parameters
-- `BlobDetectionConfig`:
-    Configuration for blob detection parameters
-- `FileProcessingConfig`:
-    Configuration for file processing and batch operations
-- `MRCMetadata`:
-    Validation for MRC file metadata
-- `ValidationPipeline`:
-    Main pipeline class for validating all configurations
-- `RidgeDetectionConfig`:
-    Configuration for ridge detection parameters
-- `WatershedConfig`:
-    Configuration for watershed segmentation parameters
-- `EnhancedBlobDetectionConfig`:
-    Configuration for enhanced blob detection combining multiple methods
-- `HessianBlobConfig`:
-    Configuration for Hessian-based blob detection
+Functions
+---------
+- `make_mrc_image`:
+    Factory function to create an MRC_Image instance.
+- `make_preprocessing_config`:
+    Factory function for preprocessing configuration PyTree
+- `make_blob_detection_config`:
+    Factory function for blob detection configuration PyTree  
+- `make_file_processing_config`:
+    Factory function for file processing configuration PyTree
+- `make_mrc_metadata`:
+    Factory function for MRC metadata PyTree
+- `make_ridge_detection_config`:
+    Factory function for ridge detection configuration PyTree
+- `make_watershed_config`:
+    Factory function for watershed configuration PyTree
+- `make_enhanced_blob_detection_config`:
+    Factory function for enhanced blob detection configuration PyTree
+- `make_hessian_blob_config`:
+    Factory function for Hessian blob detection configuration PyTree
+- `make_adaptive_filter_config`:
+    Factory function for adaptive filter configuration PyTree
 """
 
-from pathlib import Path
+from beartype.typing import Optional, Union
+from beartype import beartype
+from jaxtyping import Array, Float, Num, jaxtyped
+import jax.numpy as jnp
+from jax import lax
 
-from beartype.typing import Literal, Optional, Tuple, Union
-from pydantic import BaseModel, Field, field_validator, model_validator
-from pydantic.types import PositiveFloat, PositiveInt
+from cryoblob.types import (
+    scalar_float,
+    scalar_int,
+    PreprocessingConfig,
+    BlobDetectionConfig,
+    FileProcessingConfig,
+    MRCMetadata,
+    MRC_Image,
+    AdaptiveFilterConfig,
+    RidgeDetectionConfig,
+    WatershedConfig,
+    HessianBlobConfig,
+    EnhancedBlobDetectionConfig,
+)
 
-
-class PreprocessingConfig(BaseModel):
+@jaxtyped(typechecker=beartype)
+def make_mrc_image(
+    image_data: Union[Num[Array, "H W"], Num[Array, "D H W"]],
+    voxel_size: Float[Array, "3"],
+    origin: Float[Array, "3"],
+    data_min: scalar_float,
+    data_max: scalar_float,
+    data_mean: scalar_float,
+    mode: scalar_int,
+) -> MRC_Image:
     """
-    Configuration model for image preprocessing parameters.
-
-    This validates all parameters used in the preprocessing function
-    to ensure they are within valid ranges and types before being
-    passed to JAX-compiled functions.
-    """
-
-    exponential: bool = Field(
-        default=True, description="Apply exponential function to enhance contrast"
-    )
-
-    logarizer: bool = Field(
-        default=False, description="Apply logarithmic transformation"
-    )
-
-    gblur: int = Field(
-        default=2, ge=0, le=50, description="Gaussian blur sigma (0 means no blur)"
-    )
-
-    background: int = Field(
-        default=0,
-        ge=0,
-        le=100,
-        description="Background subtraction sigma (0 means no subtraction)",
-    )
-
-    apply_filter: int = Field(
-        default=0,
-        ge=0,
-        le=20,
-        description="Wiener filter kernel size (0 means no filter)",
-    )
-
-    @field_validator("gblur", "background")
-    @classmethod
-    def validate_sigma_values(cls, v: int) -> int:
-        """Ensure sigma values are reasonable for image processing."""
-        if v > 0 and v < 1:
-            raise ValueError("Sigma values should be >= 1 when applied")
-        return v
-
-    @model_validator(mode="after")
-    def validate_conflicting_options(self):
-        """Ensure conflicting preprocessing options aren't both enabled."""
-        if self.exponential and self.logarizer:
-            raise ValueError(
-                "Cannot apply both exponential and logarithmic transformations"
-            )
-        return self
-
-    class Config:
-        frozen = True  # Immutable for JAX compatibility
-        extra = "forbid"  # Prevent extra fields
-
-
-class BlobDetectionConfig(BaseModel):
-    """
-    Configuration model for blob detection parameters.
-
-    Validates parameters used in blob_list_log function.
-    """
-
-    min_blob_size: PositiveFloat = Field(
-        default=5.0, le=1000.0, description="Minimum blob size to detect (pixels)"
-    )
-
-    max_blob_size: PositiveFloat = Field(
-        default=20.0, le=2000.0, description="Maximum blob size to detect (pixels)"
-    )
-
-    blob_step: PositiveFloat = Field(
-        default=1.0, le=10.0, description="Step size between consecutive blob scales"
-    )
-
-    downscale: PositiveFloat = Field(
-        default=4.0, le=20.0, description="Image downscaling factor before detection"
-    )
-
-    std_threshold: PositiveFloat = Field(
-        default=6.0,
-        le=20.0,
-        description="Threshold in standard deviations for blob detection",
-    )
-
-    @field_validator("max_blob_size")
-    @classmethod
-    def validate_max_blob_size(cls, v: float, info) -> float:
-        """Ensure max_blob_size > min_blob_size."""
-        if hasattr(info, "data") and "min_blob_size" in info.data:
-            min_size = info.data["min_blob_size"]
-            if v <= min_size:
-                raise ValueError(
-                    f"max_blob_size ({v}) must be > min_blob_size ({min_size})"
-                )
-        return v
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class FileProcessingConfig(BaseModel):
-    """
-    Configuration model for file processing and batch operations.
-
-    Validates parameters used in folder_blobs function.
-    """
-
-    folder_location: Path = Field(description="Path to folder containing images")
-
-    file_type: Literal[" mrc", " tiff", " png", " jpg"] = Field(
-        default="mrc", description="File type to process"
-    )
-
-    blob_downscale: PositiveFloat = Field(
-        default=7.0, le=50.0, description="Downscaling factor for blob detection"
-    )
-
-    target_memory_gb: PositiveFloat = Field(
-        default=4.0, le=128.0, description="Target GPU memory usage in GB"
-    )
-
-    stream_large_files: bool = Field(
-        default=True, description="Whether to use streaming for large files"
-    )
-
-    batch_size: Optional[PositiveInt] = Field(
-        default=None, le=1000, description="Override automatic batch size calculation"
-    )
-
-    @field_validator("folder_location")
-    @classmethod
-    def validate_folder_exists(cls, v: Path) -> Path:
-        """Ensure the folder exists and is accessible."""
-        if not v.exists():
-            raise ValueError(f"Folder does not exist: {v}")
-        if not v.is_dir():
-            raise ValueError(f"Path is not a directory: {v}")
-        return v
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class MRCMetadata(BaseModel):
-    """
-    Validation model for MRC file metadata.
-
-    Ensures MRC file headers contain valid values.
-    """
-
-    voxel_size: Tuple[PositiveFloat, PositiveFloat, PositiveFloat] = Field(
-        description="Voxel size in Angstroms (Z, Y, X)"
-    )
-
-    origin: Tuple[float, float, float] = Field(
-        description="Origin coordinates (Z, Y, X)"
-    )
-
-    data_min: float = Field(description="Minimum pixel value")
-    data_max: float = Field(description="Maximum pixel value")
-    data_mean: float = Field(description="Mean pixel value")
-
-    mode: int = Field(
-        ge=0, le=6, description="MRC data type mode (0=int8, 1=int16, 2=float32, etc.)"
-    )
-
-    image_shape: Tuple[PositiveInt, PositiveInt] = Field(
-        description="Image dimensions (height, width)"
-    )
-
-    @field_validator("data_max")
-    @classmethod
-    def validate_data_range(cls, v: float, info) -> float:
-        """Ensure data_max > data_min."""
-        if hasattr(info, "data") and "data_min" in info.data:
-            data_min = info.data["data_min"]
-            if v <= data_min:
-                raise ValueError(f"data_max ({v}) must be > data_min ({data_min})")
-        return v
-
-    @field_validator("data_mean")
-    @classmethod
-    def validate_mean_in_range(cls, v: float, info) -> float:
-        """Ensure data_mean is between data_min and data_max."""
-        if (
-            hasattr(info, "data")
-            and "data_min" in info.data
-            and "data_max" in info.data
-        ):
-            data_min = info.data["data_min"]
-            data_max = info.data["data_max"]
-            if not (data_min <= v <= data_max):
-                raise ValueError(
-                    f"data_mean ({v}) must be between data_min ({data_min}) and data_max ({data_max})"
-                )
-        return v
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class AdaptiveFilterConfig(BaseModel):
-    """
-    Configuration model for adaptive filtering parameters.
-
-    Validates parameters used in adaptive_wiener and adaptive_threshold functions.
-    """
-
-    kernel_size: Union[PositiveInt, Tuple[PositiveInt, PositiveInt]] = Field(
-        default=3, description="Kernel size for filtering"
-    )
-
-    initial_noise: PositiveFloat = Field(
-        default=0.1,
-        le=1.0,
-        description="Initial noise estimate for adaptive Wiener filter",
-    )
-
-    initial_threshold: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Initial threshold for adaptive thresholding",
-    )
-
-    initial_slope: PositiveFloat = Field(
-        default=10.0, le=100.0, description="Initial slope for sigmoid thresholding"
-    )
-
-    learning_rate: PositiveFloat = Field(
-        default=0.01, le=1.0, description="Learning rate for optimization"
-    )
-
-    iterations: PositiveInt = Field(
-        default=100, le=1000, description="Number of optimization iterations"
-    )
-
-    @field_validator("kernel_size")
-    @classmethod
-    def validate_kernel_size(
-        cls, v: Union[int, Tuple[int, int]]
-    ) -> Union[int, Tuple[int, int]]:
-        """Ensure kernel size is odd for proper centering."""
-        if isinstance(v, int):
-            if v % 2 == 0:
-                raise ValueError(f"Kernel size must be odd, got {v}")
-        elif isinstance(v, tuple):
-            if len(v) != 2:
-                raise ValueError(
-                    f"Kernel size tuple must have 2 elements, got {len(v)}"
-                )
-            if v[0] % 2 == 0 or v[1] % 2 == 0:
-                raise ValueError(f"Both kernel dimensions must be odd, got {v}")
-        return v
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class ValidationPipeline(BaseModel):
-    """
-    Main validation pipeline that combines all configuration models.
-
-    This provides a single entry point for validating complete
-    processing configurations.
-    """
-
-    preprocessing: PreprocessingConfig = Field(
-        default_factory=PreprocessingConfig,
-        description="Image preprocessing configuration",
-    )
-
-    blob_detection: BlobDetectionConfig = Field(
-        default_factory=BlobDetectionConfig, description="Blob detection configuration"
-    )
-
-    file_processing: Optional[FileProcessingConfig] = Field(
-        default=None, description="File processing configuration (for batch operations)"
-    )
-
-    adaptive_filtering: Optional[AdaptiveFilterConfig] = Field(
-        default=None, description="Adaptive filtering configuration"
-    )
-
-    def validate_for_single_image(
-        self,
-    ) -> Tuple[PreprocessingConfig, BlobDetectionConfig]:
-        """
-        Validate configuration for single image processing.
-
-        Returns
-        -------
-        - preprocessing_config: Validated preprocessing parameters
-        - blob_config: Validated blob detection parameters
-        """
-        return self.preprocessing, self.blob_detection
-
-    def validate_for_batch_processing(
-        self,
-    ) -> Tuple[PreprocessingConfig, BlobDetectionConfig, FileProcessingConfig]:
-        """
-        Validate configuration for batch file processing.
-
-        Returns
-        -------
-        - preprocessing_config: Validated preprocessing parameters
-        - blob_config: Validated blob detection parameters
-        - file_config: Validated file processing parameters
-
-        Raises
-        ------
-        ValueError: If file_processing configuration is not provided
-        """
-        if self.file_processing is None:
-            raise ValueError(
-                "file_processing configuration is required for batch processing"
-            )
-
-        return self.preprocessing, self.blob_detection, self.file_processing
-
-    def validate_for_adaptive_processing(
-        self,
-    ) -> Tuple[PreprocessingConfig, AdaptiveFilterConfig]:
-        """
-        Validate configuration for adaptive filtering.
-
-        Returns
-        -------
-        - preprocessing_config: Validated preprocessing parameters
-        - adaptive_config: Validated adaptive filtering parameters
-
-        Raises
-        ------
-        ValueError: If adaptive_filtering configuration is not provided
-        """
-        if self.adaptive_filtering is None:
-            raise ValueError(
-                "adaptive_filtering configuration is required for adaptive processing"
-            )
-
-        return self.preprocessing, self.adaptive_filtering
-
-    def to_preprocessing_kwargs(self) -> dict:
-        """
-        Convert preprocessing config to kwargs dict for existing functions.
-
-        Returns
-        -------
-        - kwargs: Dictionary compatible with existing preprocessing function
-        """
-        return self.preprocessing.model_dump()
-
-    def to_blob_kwargs(self) -> dict:
-        """
-        Convert blob detection config to kwargs dict for existing functions.
-
-        Returns
-        -------
-        - kwargs: Dictionary compatible with existing blob_list_log function
-        """
-        return self.blob_detection.model_dump()
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-# Factory functions for common configurations
-def create_default_pipeline() -> ValidationPipeline:
-    """Create a validation pipeline with default settings."""
-    return ValidationPipeline()
-
-
-def create_high_quality_pipeline() -> ValidationPipeline:
-    """Create a validation pipeline optimized for high-quality blob detection."""
-    return ValidationPipeline(
-        preprocessing=PreprocessingConfig(
-            exponential=True, logarizer=False, gblur=1, background=10, apply_filter=3
-        ),
-        blob_detection=BlobDetectionConfig(
-            min_blob_size=3.0,
-            max_blob_size=30.0,
-            blob_step=0.5,
-            downscale=2.0,
-            std_threshold=4.0,
-        ),
-    )
-
-
-def create_fast_pipeline() -> ValidationPipeline:
-    """Create a validation pipeline optimized for speed."""
-    return ValidationPipeline(
-        preprocessing=PreprocessingConfig(
-            exponential=False, logarizer=False, gblur=0, background=0, apply_filter=0
-        ),
-        blob_detection=BlobDetectionConfig(
-            min_blob_size=5.0,
-            max_blob_size=15.0,
-            blob_step=2.0,
-            downscale=8.0,
-            std_threshold=8.0,
-        ),
-    )
-
-
-def validate_mrc_metadata(
-    voxel_size: Tuple[float, float, float],
-    origin: Tuple[float, float, float],
-    data_min: float,
-    data_max: float,
-    data_mean: float,
-    mode: int,
-    image_shape: Tuple[int, int],
-) -> MRCMetadata:
-    """
-    Validate MRC metadata and return validated model.
+    Description
+    -----------
+    Factory function to create an MRC_Image instance.
 
     Parameters
     ----------
-    - voxel_size: Voxel dimensions (Z, Y, X)
-    - origin: Origin coordinates (Z, Y, X)
-    - data_min: Minimum pixel value
-    - data_max: Maximum pixel value
-    - data_mean: Mean pixel value
-    - mode: MRC data type mode
-    - image_shape: Image dimensions (height, width)
+    - `image_data` (Num[Array, "H W"] | Num[Array, "D H W"]):
+        The image data array from the MRC file. Can be 2D or 3D.
+    - `voxel_size` (Float[Array, "3"]):
+        Voxel size in the order (Z, Y, X).
+    - `origin` (Float[Array, "3"]):
+        Origin coordinates from the MRC file header (Z, Y, X).
+    - `data_min` (scalar_float):
+        Minimum value of image data (as stored in header).
+    - `data_max` (scalar_float):
+        Maximum value of image data (as stored in header).
+    - `data_mean` (scalar_float):
+        Mean value of image data (as stored in header).
+    - `mode` (scalar_int):
+        Data type mode from MRC header (e.g., 0: int8, 2: float32).
 
     Returns
     -------
-    - metadata: Validated MRC metadata model
-
-    Raises
-    ------
-    ValidationError: If any metadata values are invalid
+    - `MRC_Image`:
+        An instance of the MRC_Image PyTree structure.
     """
-    return MRCMetadata(
+    return MRC_Image(
+        image_data=image_data,
         voxel_size=voxel_size,
         origin=origin,
         data_min=data_min,
         data_max=data_max,
         data_mean=data_mean,
         mode=mode,
-        image_shape=image_shape,
     )
 
 
-class RidgeDetectionConfig(BaseModel):
+def make_preprocessing_config(
+    exponential: bool = True,
+    logarizer: bool = False,
+    gblur: int = 2,
+    background: int = 0,
+    apply_filter: int = 0
+) -> PreprocessingConfig:
     """
-    Configuration model for ridge detection parameters.
-
-    Validates parameters used for detecting elongated objects.
+    Factory function to create a PreprocessingConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    exponential : bool
+        Apply exponential function to enhance contrast (default: True)
+    logarizer : bool
+        Apply logarithmic transformation (default: False)
+    gblur : int
+        Gaussian blur sigma, 0 means no blur (default: 2, range: 0-50)
+    background : int
+        Background subtraction sigma, 0 means no subtraction (default: 0, range: 0-100)
+    apply_filter : int
+        Wiener filter kernel size, 0 means no filter (default: 0, range: 0-20)
+    
+    Returns
+    -------
+    PreprocessingConfig
+        Validated preprocessing configuration PyTree
+    
+    Raises
+    ------
+    ValueError
+        If validation fails
     """
-
-    min_scale: PositiveFloat = Field(
-        default=1.0, le=50.0, description="Minimum scale for ridge detection"
+    # Convert to JAX arrays
+    exponential_arr = jnp.asarray(exponential, dtype=jnp.bool_)
+    logarizer_arr = jnp.asarray(logarizer, dtype=jnp.bool_)
+    gblur_arr = jnp.asarray(gblur, dtype=jnp.int32)
+    background_arr = jnp.asarray(background, dtype=jnp.int32)
+    apply_filter_arr = jnp.asarray(apply_filter, dtype=jnp.int32)
+    
+    # Validation using lax.cond
+    # Check ranges
+    gblur_validated = lax.cond(
+        (gblur_arr < 0) | (gblur_arr > 50),
+        lambda x: lax.stop_gradient(jnp.asarray(2, dtype=jnp.int32)),  # Default value
+        lambda x: x,
+        gblur_arr
+    )
+    
+    background_validated = lax.cond(
+        (background_arr < 0) | (background_arr > 100),
+        lambda x: lax.stop_gradient(jnp.asarray(0, dtype=jnp.int32)),  # Default value
+        lambda x: x,
+        background_arr
+    )
+    
+    apply_filter_validated = lax.cond(
+        (apply_filter_arr < 0) | (apply_filter_arr > 20),
+        lambda x: lax.stop_gradient(jnp.asarray(0, dtype=jnp.int32)),  # Default value
+        lambda x: x,
+        apply_filter_arr
+    )
+    
+    # Check conflicting options
+    logarizer_validated = lax.cond(
+        exponential_arr & logarizer_arr,
+        lambda x: lax.stop_gradient(jnp.asarray(False, dtype=jnp.bool_)),  # Disable logarizer if both are True
+        lambda x: x,
+        logarizer_arr
+    )
+    
+    return PreprocessingConfig(
+        exponential=exponential_arr,
+        logarizer=logarizer_validated,
+        gblur=gblur_validated,
+        background=background_validated,
+        apply_filter=apply_filter_validated
     )
 
-    max_scale: PositiveFloat = Field(
-        default=10.0, le=100.0, description="Maximum scale for ridge detection"
-    )
 
-    num_scales: PositiveInt = Field(
-        default=10, le=50, description="Number of scales to test"
-    )
-
-    ridge_threshold: PositiveFloat = Field(
-        default=0.01, le=1.0, description="Ridge strength threshold"
-    )
-
-    enable_multi_scale: bool = Field(
-        default=True, description="Use multi-scale ridge detection"
-    )
-
-    @field_validator("max_scale")
-    @classmethod
-    def validate_scale_range(cls, v: float, info) -> float:
-        """Ensure max_scale > min_scale."""
-        if hasattr(info, "data") and "min_scale" in info.data:
-            min_scale = info.data["min_scale"]
-            if v <= min_scale:
-                raise ValueError(f"max_scale ({v}) must be > min_scale ({min_scale})")
-        return v
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class WatershedConfig(BaseModel):
+def make_blob_detection_config(
+    min_sigma: float = 1.0,
+    max_sigma: float = 50.0,
+    num_sigma: int = 10,
+    threshold: float = 0.01,
+    exclude_border: int = 0
+) -> BlobDetectionConfig:
     """
-    Configuration model for watershed segmentation parameters.
-
-    Validates parameters used for separating overlapping blobs.
+    Factory function to create a BlobDetectionConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    min_sigma : float
+        Minimum sigma for Laplacian of Gaussian (default: 1.0)
+    max_sigma : float
+        Maximum sigma for Laplacian of Gaussian (default: 50.0)
+    num_sigma : int
+        Number of sigma values to test (default: 10)
+    threshold : float
+        Detection threshold (default: 0.01)
+    exclude_border : int
+        Pixels to exclude from border (default: 0)
+    
+    Returns
+    -------
+    BlobDetectionConfig
+        Validated blob detection configuration PyTree
     """
-
-    min_marker_distance: PositiveFloat = Field(
-        default=5.0, le=50.0, description="Minimum distance between watershed markers"
+    # Convert to JAX arrays
+    min_sigma_arr = jnp.asarray(min_sigma, dtype=jnp.float32)
+    max_sigma_arr = jnp.asarray(max_sigma, dtype=jnp.float32)
+    num_sigma_arr = jnp.asarray(num_sigma, dtype=jnp.int32)
+    threshold_arr = jnp.asarray(threshold, dtype=jnp.float32)
+    exclude_border_arr = jnp.asarray(exclude_border, dtype=jnp.int32)
+    
+    # Validation
+    min_sigma_validated = lax.cond(
+        min_sigma_arr <= 0,
+        lambda x: jnp.asarray(1.0, dtype=jnp.float32),
+        lambda x: x,
+        min_sigma_arr
+    )
+    
+    max_sigma_validated = lax.cond(
+        max_sigma_arr <= 0,
+        lambda x: jnp.asarray(50.0, dtype=jnp.float32),
+        lambda x: x,
+        max_sigma_arr
+    )
+    
+    max_sigma_validated = lax.cond(
+        max_sigma_validated < min_sigma_validated,
+        lambda x: min_sigma_validated,
+        lambda x: x,
+        max_sigma_validated
+    )
+    
+    num_sigma_validated = lax.cond(
+        num_sigma_arr <= 0,
+        lambda x: jnp.asarray(10, dtype=jnp.int32),
+        lambda x: x,
+        num_sigma_arr
+    )
+    
+    exclude_border_validated = lax.cond(
+        exclude_border_arr < 0,
+        lambda x: jnp.asarray(0, dtype=jnp.int32),
+        lambda x: x,
+        exclude_border_arr
+    )
+    
+    return BlobDetectionConfig(
+        min_sigma=min_sigma_validated,
+        max_sigma=max_sigma_validated,
+        num_sigma=num_sigma_validated,
+        threshold=threshold_arr,
+        exclude_border=exclude_border_validated
     )
 
-    flooding_iterations: PositiveInt = Field(
-        default=10, le=100, description="Number of flooding iterations"
-    )
 
-    enable_adaptive_markers: bool = Field(
-        default=True, description="Use adaptive marker generation"
-    )
-
-    distance_transform_method: str = Field(
-        default="euclidean",
-        pattern="^(euclidean|manhattan|chebyshev)$",
-        description="Distance transform method for marker generation",
-    )
-
-    marker_erosion_size: PositiveInt = Field(
-        default=3, le=15, description="Erosion size for marker refinement"
-    )
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class HessianBlobConfig(BaseModel):
+def make_file_processing_config(
+    batch_size: int = 4,
+    memory_limit_gb: float = 8.0
+) -> FileProcessingConfig:
     """
-    Configuration model for Hessian-based blob detection.
-
-    Validates parameters for Determinant of Hessian blob detection.
+    Factory function to create a FileProcessingConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    batch_size : int
+        Number of files to process in parallel (default: 4)
+    memory_limit_gb : float
+        Memory limit in GB (default: 8.0)
+    
+    Returns
+    -------
+    FileProcessingConfig
+        Validated file processing configuration PyTree
     """
-
-    scale_normalization: bool = Field(
-        default=True, description="Apply scale normalization to Hessian determinant"
+    # Convert to JAX arrays
+    batch_size_arr = jnp.asarray(batch_size, dtype=jnp.int32)
+    memory_limit_gb_arr = jnp.asarray(memory_limit_gb, dtype=jnp.float32)
+    
+    # Validation
+    batch_size_validated = lax.cond(
+        batch_size_arr <= 0,
+        lambda x: jnp.asarray(4, dtype=jnp.int32),
+        lambda x: x,
+        batch_size_arr
+    )
+    
+    memory_limit_gb_validated = lax.cond(
+        memory_limit_gb_arr <= 0,
+        lambda x: jnp.asarray(8.0, dtype=jnp.float32),
+        lambda x: x,
+        memory_limit_gb_arr
+    )
+    
+    return FileProcessingConfig(
+        batch_size=batch_size_validated,
+        memory_limit_gb=memory_limit_gb_validated
     )
 
-    eigenvalue_threshold: PositiveFloat = Field(
-        default=0.001, le=1.0, description="Eigenvalue threshold for blob detection"
-    )
 
-    boundary_enhancement: bool = Field(
-        default=True, description="Enhance blob boundaries using gradient information"
-    )
-
-    non_maximum_suppression: bool = Field(
-        default=True, description="Apply non-maximum suppression to detected blobs"
-    )
-
-    suppression_radius: PositiveFloat = Field(
-        default=2.0, le=20.0, description="Radius for non-maximum suppression"
-    )
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class EnhancedBlobDetectionConfig(BaseModel):
+def make_mrc_metadata(
+    nx: int,
+    ny: int,
+    nz: int,
+    mode: int,
+    dmin: float,
+    dmax: float,
+    dmean: float
+) -> MRCMetadata:
     """
-    Configuration model for enhanced blob detection combining multiple methods.
-
-    This integrates circular blob detection, ridge detection, and watershed segmentation.
+    Factory function to create an MRCMetadata PyTree with validation.
+    
+    Parameters
+    ----------
+    nx : int
+        Number of columns
+    ny : int
+        Number of rows
+    nz : int
+        Number of sections
+    mode : int
+        Data type
+    dmin : float
+        Minimum density value
+    dmax : float
+        Maximum density value
+    dmean : float
+        Mean density value
+    
+    Returns
+    -------
+    MRCMetadata
+        Validated MRC metadata PyTree
     """
-
-    # Base blob detection parameters
-    min_blob_size: PositiveFloat = Field(
-        default=5.0, le=1000.0, description="Minimum blob size to detect"
+    # Convert to JAX arrays
+    nx_arr = jnp.asarray(nx, dtype=jnp.int32)
+    ny_arr = jnp.asarray(ny, dtype=jnp.int32)
+    nz_arr = jnp.asarray(nz, dtype=jnp.int32)
+    mode_arr = jnp.asarray(mode, dtype=jnp.int32)
+    dmin_arr = jnp.asarray(dmin, dtype=jnp.float32)
+    dmax_arr = jnp.asarray(dmax, dtype=jnp.float32)
+    dmean_arr = jnp.asarray(dmean, dtype=jnp.float32)
+    
+    # Validation
+    nx_validated = lax.cond(nx_arr <= 0, lambda x: jnp.asarray(1, dtype=jnp.int32), lambda x: x, nx_arr)
+    ny_validated = lax.cond(ny_arr <= 0, lambda x: jnp.asarray(1, dtype=jnp.int32), lambda x: x, ny_arr)
+    nz_validated = lax.cond(nz_arr <= 0, lambda x: jnp.asarray(1, dtype=jnp.int32), lambda x: x, nz_arr)
+    
+    # Ensure dmax >= dmin
+    dmax_validated = lax.cond(dmax_arr < dmin_arr, lambda x: dmin_arr, lambda x: x, dmax_arr)
+    
+    # Clamp dmean to [dmin, dmax]
+    dmean_validated = jnp.clip(dmean_arr, dmin_arr, dmax_validated)
+    
+    return MRCMetadata(
+        nx=nx_validated, ny=ny_validated, nz=nz_validated, mode=mode_arr,
+        dmin=dmin_arr, dmax=dmax_validated, dmean=dmean_validated
     )
 
-    max_blob_size: PositiveFloat = Field(
-        default=20.0, le=2000.0, description="Maximum blob size to detect"
-    )
 
-    blob_step: PositiveFloat = Field(
-        default=1.0, le=10.0, description="Step size between blob scales"
-    )
-
-    downscale: PositiveFloat = Field(
-        default=4.0, le=20.0, description="Image downscaling factor"
-    )
-
-    std_threshold: PositiveFloat = Field(
-        default=6.0, le=20.0, description="Standard deviation threshold for detection"
-    )
-
-    # Enhanced detection options
-    enable_ridge_detection: bool = Field(
-        default=True, description="Enable ridge detection for elongated objects"
-    )
-
-    enable_watershed: bool = Field(
-        default=True, description="Enable watershed segmentation for overlapping blobs"
-    )
-
-    enable_hessian_blobs: bool = Field(
-        default=False, description="Use Hessian-based blob detection instead of LoG"
-    )
-
-    # Method-specific configurations
-    ridge_config: Optional[RidgeDetectionConfig] = Field(
-        default_factory=RidgeDetectionConfig,
-        description="Ridge detection configuration",
-    )
-
-    watershed_config: Optional[WatershedConfig] = Field(
-        default_factory=WatershedConfig,
-        description="Watershed segmentation configuration",
-    )
-
-    hessian_config: Optional[HessianBlobConfig] = Field(
-        default_factory=HessianBlobConfig,
-        description="Hessian blob detection configuration",
-    )
-
-    # Post-processing options
-    merge_overlapping_detections: bool = Field(
-        default=True, description="Merge overlapping detections from different methods"
-    )
-
-    overlap_threshold: PositiveFloat = Field(
-        default=0.5,
-        le=1.0,
-        description="IoU threshold for merging overlapping detections",
-    )
-
-    confidence_weighting: bool = Field(
-        default=True, description="Weight detections by confidence scores"
-    )
-
-    @field_validator("max_blob_size")
-    @classmethod
-    def validate_blob_size_range(cls, v: float, info) -> float:
-        """Ensure max_blob_size > min_blob_size."""
-        if hasattr(info, "data") and "min_blob_size" in info.data:
-            min_size = info.data["min_blob_size"]
-            if v <= min_size:
-                raise ValueError(
-                    f"max_blob_size ({v}) must be > min_blob_size ({min_size})"
-                )
-        return v
-
-    @model_validator(mode="after")
-    def validate_method_dependencies(self):
-        """Ensure required configurations are present when methods are enabled."""
-        if self.enable_ridge_detection and self.ridge_config is None:
-            raise ValueError(
-                "ridge_config is required when enable_ridge_detection is True"
-            )
-
-        if self.enable_watershed and self.watershed_config is None:
-            raise ValueError(
-                "watershed_config is required when enable_watershed is True"
-            )
-
-        if self.enable_hessian_blobs and self.hessian_config is None:
-            raise ValueError(
-                "hessian_config is required when enable_hessian_blobs is True"
-            )
-
-        return self
-
-    def to_enhanced_kwargs(self) -> dict:
-        """
-        Convert configuration to kwargs dict for enhanced_blob_detection function.
-
-        Returns
-        -------
-        - kwargs: Dictionary compatible with enhanced_blob_detection function
-        """
-        base_kwargs = {
-            "min_blob_size": self.min_blob_size,
-            "max_blob_size": self.max_blob_size,
-            "blob_step": self.blob_step,
-            "downscale": self.downscale,
-            "std_threshold": self.std_threshold,
-            "use_ridge_detection": self.enable_ridge_detection,
-            "use_watershed": self.enable_watershed,
-        }
-
-        if self.ridge_config:
-            base_kwargs.update(
-                {
-                    "ridge_threshold": self.ridge_config.ridge_threshold,
-                }
-            )
-
-        if self.watershed_config:
-            base_kwargs.update(
-                {
-                    "min_marker_distance": self.watershed_config.min_marker_distance,
-                }
-            )
-
-        return base_kwargs
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-class BlobAnalysisConfig(BaseModel):
+def make_adaptive_filter_config(
+    kernel_size: int = 5,
+    noise_estimate: float = 0.01,
+    iterations: int = 10
+) -> AdaptiveFilterConfig:
     """
-    Configuration for blob analysis and post-processing.
-
-    Validates parameters for analyzing detected blobs and combining results.
+    Factory function to create an AdaptiveFilterConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    kernel_size : int
+        Size of the filter kernel (default: 5)
+    noise_estimate : float
+        Initial noise estimate (default: 0.01)
+    iterations : int
+        Number of adaptation iterations (default: 10)
+    
+    Returns
+    -------
+    AdaptiveFilterConfig
+        Validated adaptive filter configuration PyTree
     """
-
-    size_filtering: bool = Field(
-        default=True, description="Filter blobs by size constraints"
+    # Convert to JAX arrays
+    kernel_size_arr = jnp.asarray(kernel_size, dtype=jnp.int32)
+    noise_estimate_arr = jnp.asarray(noise_estimate, dtype=jnp.float32)
+    iterations_arr = jnp.asarray(iterations, dtype=jnp.int32)
+    
+    # Ensure kernel_size is odd and positive
+    kernel_size_validated = lax.cond(
+        kernel_size_arr <= 0,
+        lambda x: jnp.asarray(5, dtype=jnp.int32),
+        lambda x: x,
+        kernel_size_arr
+    )
+    kernel_size_validated = lax.cond(
+        kernel_size_validated % 2 == 0,
+        lambda x: x + 1,
+        lambda x: x,
+        kernel_size_validated
+    )
+    
+    noise_estimate_validated = lax.cond(
+        noise_estimate_arr <= 0,
+        lambda x: jnp.asarray(0.01, dtype=jnp.float32),
+        lambda x: x,
+        noise_estimate_arr
+    )
+    
+    iterations_validated = lax.cond(
+        iterations_arr <= 0,
+        lambda x: jnp.asarray(10, dtype=jnp.int32),
+        lambda x: x,
+        iterations_arr
+    )
+    
+    return AdaptiveFilterConfig(
+        kernel_size=kernel_size_validated,
+        noise_estimate=noise_estimate_validated,
+        iterations=iterations_validated
     )
 
-    aspect_ratio_filtering: bool = Field(
-        default=True, description="Filter blobs by aspect ratio"
+
+def make_ridge_detection_config(
+    min_scale: float = 1.0,
+    max_scale: float = 10.0,
+    scale_step: float = 0.5,
+    threshold: float = 0.1
+) -> RidgeDetectionConfig:
+    """
+    Factory function to create a RidgeDetectionConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    min_scale : float
+        Minimum scale for ridge detection (default: 1.0)
+    max_scale : float
+        Maximum scale for ridge detection (default: 10.0)
+    scale_step : float
+        Step size for scale space (default: 0.5)
+    threshold : float
+        Detection threshold (default: 0.1)
+    
+    Returns
+    -------
+    RidgeDetectionConfig
+        Validated ridge detection configuration PyTree
+    """
+    # Convert to JAX arrays
+    min_scale_arr = jnp.asarray(min_scale, dtype=jnp.float32)
+    max_scale_arr = jnp.asarray(max_scale, dtype=jnp.float32)
+    scale_step_arr = jnp.asarray(scale_step, dtype=jnp.float32)
+    threshold_arr = jnp.asarray(threshold, dtype=jnp.float32)
+    
+    # Validation
+    min_scale_validated = lax.cond(
+        min_scale_arr <= 0,
+        lambda x: jnp.asarray(1.0, dtype=jnp.float32),
+        lambda x: x,
+        min_scale_arr
+    )
+    
+    max_scale_validated = lax.cond(
+        max_scale_arr <= 0,
+        lambda x: jnp.asarray(10.0, dtype=jnp.float32),
+        lambda x: x,
+        max_scale_arr
+    )
+    
+    max_scale_validated = lax.cond(
+        max_scale_validated < min_scale_validated,
+        lambda x: min_scale_validated,
+        lambda x: x,
+        max_scale_validated
+    )
+    
+    scale_step_validated = lax.cond(
+        scale_step_arr <= 0,
+        lambda x: jnp.asarray(0.5, dtype=jnp.float32),
+        lambda x: x,
+        scale_step_arr
+    )
+    
+    return RidgeDetectionConfig(
+        min_scale=min_scale_validated,
+        max_scale=max_scale_validated,
+        scale_step=scale_step_validated,
+        threshold=threshold_arr
     )
 
-    min_aspect_ratio: PositiveFloat = Field(
-        default=0.1, le=1.0, description="Minimum aspect ratio for valid blobs"
+
+def make_watershed_config(
+    min_distance: int = 10,
+    threshold_abs: Optional[float] = None,
+    compactness: float = 0.0
+) -> WatershedConfig:
+    """
+    Factory function to create a WatershedConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    min_distance : int
+        Minimum distance between markers (default: 10)
+    threshold_abs : Optional[float]
+        Absolute threshold for markers (default: None)
+    compactness : float
+        Compactness parameter for watershed (default: 0.0)
+    
+    Returns
+    -------
+    WatershedConfig
+        Validated watershed configuration PyTree
+    """
+    # Convert to JAX arrays
+    min_distance_arr = jnp.asarray(min_distance, dtype=jnp.int32)
+    threshold_abs_val = jnp.asarray(
+        -1.0 if threshold_abs is None else threshold_abs,
+        dtype=jnp.float32
+    )
+    compactness_arr = jnp.asarray(compactness, dtype=jnp.float32)
+    
+    # Validation
+    min_distance_validated = lax.cond(
+        min_distance_arr <= 0,
+        lambda x: jnp.asarray(10, dtype=jnp.int32),
+        lambda x: x,
+        min_distance_arr
+    )
+    
+    compactness_validated = lax.cond(
+        compactness_arr < 0,
+        lambda x: jnp.asarray(0.0, dtype=jnp.float32),
+        lambda x: x,
+        compactness_arr
+    )
+    
+    return WatershedConfig(
+        min_distance=min_distance_validated,
+        threshold_abs=threshold_abs_val,
+        compactness=compactness_validated
     )
 
-    max_aspect_ratio: PositiveFloat = Field(
-        default=10.0, ge=1.0, description="Maximum aspect ratio for valid blobs"
+
+def make_hessian_blob_config(
+    min_sigma: float = 1.0,
+    max_sigma: float = 30.0,
+    num_sigma: int = 10,
+    threshold: float = 0.01
+) -> HessianBlobConfig:
+    """
+    Factory function to create a HessianBlobConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    min_sigma : float
+        Minimum sigma for scale space (default: 1.0)
+    max_sigma : float
+        Maximum sigma for scale space (default: 30.0)
+    num_sigma : int
+        Number of scales to test (default: 10)
+    threshold : float
+        Detection threshold (default: 0.01)
+    
+    Returns
+    -------
+    HessianBlobConfig
+        Validated Hessian blob detection configuration PyTree
+    """
+    # Convert to JAX arrays
+    min_sigma_arr = jnp.asarray(min_sigma, dtype=jnp.float32)
+    max_sigma_arr = jnp.asarray(max_sigma, dtype=jnp.float32)
+    num_sigma_arr = jnp.asarray(num_sigma, dtype=jnp.int32)
+    threshold_arr = jnp.asarray(threshold, dtype=jnp.float32)
+    
+    # Validation
+    min_sigma_validated = lax.cond(
+        min_sigma_arr <= 0,
+        lambda x: jnp.asarray(1.0, dtype=jnp.float32),
+        lambda x: x,
+        min_sigma_arr
+    )
+    
+    max_sigma_validated = lax.cond(
+        max_sigma_arr <= 0,
+        lambda x: jnp.asarray(30.0, dtype=jnp.float32),
+        lambda x: x,
+        max_sigma_arr
+    )
+    
+    max_sigma_validated = lax.cond(
+        max_sigma_validated < min_sigma_validated,
+        lambda x: min_sigma_validated,
+        lambda x: x,
+        max_sigma_validated
+    )
+    
+    num_sigma_validated = lax.cond(
+        num_sigma_arr <= 0,
+        lambda x: jnp.asarray(10, dtype=jnp.int32),
+        lambda x: x,
+        num_sigma_arr
+    )
+    
+    return HessianBlobConfig(
+        min_sigma=min_sigma_validated,
+        max_sigma=max_sigma_validated,
+        num_sigma=num_sigma_validated,
+        threshold=threshold_arr
     )
 
-    circularity_filtering: bool = Field(
-        default=False, description="Filter blobs by circularity"
+
+def make_enhanced_blob_detection_config(
+    min_blob_size: float = 5.0,
+    max_blob_size: float = 50.0,
+    detection_threshold: float = 0.05,
+    use_ridge_detection: bool = True,
+    use_watershed: bool = True
+) -> EnhancedBlobDetectionConfig:
+    """
+    Factory function to create an EnhancedBlobDetectionConfig PyTree with validation.
+    
+    Parameters
+    ----------
+    min_blob_size : float
+        Minimum expected blob size (default: 5.0)
+    max_blob_size : float
+        Maximum expected blob size (default: 50.0)
+    detection_threshold : float
+        Overall detection threshold (default: 0.05)
+    use_ridge_detection : bool
+        Enable ridge detection for elongated objects (default: True)
+    use_watershed : bool
+        Enable watershed for overlapping blobs (default: True)
+    
+    Returns
+    -------
+    EnhancedBlobDetectionConfig
+        Validated enhanced blob detection configuration PyTree
+    """
+    # Convert to JAX arrays
+    min_blob_size_arr = jnp.asarray(min_blob_size, dtype=jnp.float32)
+    max_blob_size_arr = jnp.asarray(max_blob_size, dtype=jnp.float32)
+    detection_threshold_arr = jnp.asarray(detection_threshold, dtype=jnp.float32)
+    use_ridge_detection_arr = jnp.asarray(use_ridge_detection, dtype=jnp.bool_)
+    use_watershed_arr = jnp.asarray(use_watershed, dtype=jnp.bool_)
+    
+    # Validation
+    min_blob_size_validated = lax.cond(
+        min_blob_size_arr <= 0,
+        lambda x: jnp.asarray(5.0, dtype=jnp.float32),
+        lambda x: x,
+        min_blob_size_arr
     )
-
-    min_circularity: PositiveFloat = Field(
-        default=0.1, le=1.0, description="Minimum circularity for valid blobs"
+    
+    max_blob_size_validated = lax.cond(
+        max_blob_size_arr <= 0,
+        lambda x: jnp.asarray(50.0, dtype=jnp.float32),
+        lambda x: x,
+        max_blob_size_arr
     )
-
-    convexity_filtering: bool = Field(
-        default=False, description="Filter blobs by convexity"
+    
+    max_blob_size_validated = lax.cond(
+        max_blob_size_validated < min_blob_size_validated,
+        lambda x: min_blob_size_validated,
+        lambda x: x,
+        max_blob_size_validated
     )
-
-    min_convexity: PositiveFloat = Field(
-        default=0.5, le=1.0, description="Minimum convexity for valid blobs"
+    
+    detection_threshold_validated = lax.cond(
+        detection_threshold_arr <= 0,
+        lambda x: jnp.asarray(0.05, dtype=jnp.float32),
+        lambda x: x,
+        detection_threshold_arr
     )
-
-    inertia_filtering: bool = Field(
-        default=False, description="Filter blobs by inertia ratio"
-    )
-
-    min_inertia_ratio: PositiveFloat = Field(
-        default=0.01, le=1.0, description="Minimum inertia ratio for valid blobs"
-    )
-
-    class Config:
-        frozen = True
-        extra = "forbid"
-
-
-# Factory functions for common enhanced configurations
-def create_elongated_objects_pipeline() -> EnhancedBlobDetectionConfig:
-    """Create a pipeline optimized for elongated objects."""
+    
     return EnhancedBlobDetectionConfig(
-        enable_ridge_detection=True,
-        enable_watershed=False,
-        enable_hessian_blobs=True,
-        ridge_config=RidgeDetectionConfig(
-            min_scale=2.0, max_scale=15.0, num_scales=15, ridge_threshold=0.005
-        ),
-        hessian_config=HessianBlobConfig(
-            boundary_enhancement=True,
-            non_maximum_suppression=True,
-            suppression_radius=3.0,
-        ),
-    )
-
-
-def create_overlapping_blobs_pipeline() -> EnhancedBlobDetectionConfig:
-    """Create a pipeline optimized for overlapping blobs."""
-    return EnhancedBlobDetectionConfig(
-        enable_ridge_detection=False,
-        enable_watershed=True,
-        enable_hessian_blobs=True,
-        watershed_config=WatershedConfig(
-            min_marker_distance=3.0,
-            flooding_iterations=15,
-            enable_adaptive_markers=True,
-        ),
-        hessian_config=HessianBlobConfig(
-            boundary_enhancement=True, eigenvalue_threshold=0.0005
-        ),
-        merge_overlapping_detections=True,
-        overlap_threshold=0.3,
-    )
-
-
-def create_comprehensive_pipeline() -> EnhancedBlobDetectionConfig:
-    """Create a comprehensive pipeline using all methods."""
-    return EnhancedBlobDetectionConfig(
-        enable_ridge_detection=True,
-        enable_watershed=True,
-        enable_hessian_blobs=True,
-        ridge_config=RidgeDetectionConfig(
-            min_scale=1.5, max_scale=12.0, num_scales=12, ridge_threshold=0.008
-        ),
-        watershed_config=WatershedConfig(
-            min_marker_distance=4.0,
-            flooding_iterations=12,
-            enable_adaptive_markers=True,
-        ),
-        hessian_config=HessianBlobConfig(
-            boundary_enhancement=True,
-            non_maximum_suppression=True,
-            suppression_radius=2.5,
-        ),
-        merge_overlapping_detections=True,
-        overlap_threshold=0.4,
-        confidence_weighting=True,
+        min_blob_size=min_blob_size_validated,
+        max_blob_size=max_blob_size_validated,
+        detection_threshold=detection_threshold_validated,
+        use_ridge_detection=use_ridge_detection_arr,
+        use_watershed=use_watershed_arr
     )

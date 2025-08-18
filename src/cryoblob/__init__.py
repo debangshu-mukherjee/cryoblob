@@ -129,7 +129,7 @@ Submodules
         A PyTree structure for MRC images.
         Contains the image data and metadata.
     The factory functions are:
-    - `make_MRC_Image`:
+    - `make_mrc_image`:
         Factory function to create an MRC_Image instance.
 
 - `valid`:
@@ -181,7 +181,6 @@ from .image import (
     apply_gaussian_blur,
     difference_of_gaussians,
     laplacian_of_gaussian,
-    laplacian_kernel,
     exponential_kernel,
     perona_malik,
     histogram,
@@ -201,17 +200,30 @@ from .multi import (
     enhanced_blob_detection,
 )
 from .plots import plot_mrc
-from .types import scalar_float, scalar_int, scalar_num, non_jax_number, MRC_Image
-from .valid import (
+from .types import (
+    scalar_float, scalar_int, scalar_num, non_jax_number, 
+    MRC_Image,
     PreprocessingConfig,
     BlobDetectionConfig,
     FileProcessingConfig,
     MRCMetadata,
-    ValidationPipeline,
     RidgeDetectionConfig,
     WatershedConfig,
     EnhancedBlobDetectionConfig,
     HessianBlobConfig,
+    AdaptiveFilterConfig,
+)
+from .valid import (
+    make_preprocessing_config,
+    make_blob_detection_config,
+    make_file_processing_config,
+    make_mrc_image,
+    make_mrc_metadata,
+    make_adaptive_filter_config,
+    make_ridge_detection_config,
+    make_watershed_config,
+    make_hessian_blob_config,
+    make_enhanced_blob_detection_config,
 )
 
 __all__: list[str] = [
@@ -262,9 +274,19 @@ __all__: list[str] = [
     "BlobDetectionConfig",
     "FileProcessingConfig",
     "MRCMetadata",
-    "ValidationPipeline",
     "RidgeDetectionConfig",
     "WatershedConfig",
     "EnhancedBlobDetectionConfig",
     "HessianBlobConfig",
+    "AdaptiveFilterConfig",
+    "make_preprocessing_config",
+    "make_blob_detection_config",
+    "make_file_processing_config",
+    "make_mrc_image",
+    "make_mrc_metadata",
+    "make_adaptive_filter_config",
+    "make_ridge_detection_config",
+    "make_watershed_config",
+    "make_hessian_blob_config",
+    "make_enhanced_blob_detection_config",
 ]
