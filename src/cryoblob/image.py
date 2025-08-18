@@ -49,6 +49,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def image_resizer(
     orig_image: Union[Real[Array, "y x"], Real[Array, "y x c"]],
     new_sampling: Union[scalar_num, Real[Array, "2"]],
@@ -94,6 +95,7 @@ def image_resizer(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def resize_x(
     x_image: Num[Array, "y x"], new_x_len: scalar_int
 ) -> Float[Array, "y new_x"]:
@@ -159,6 +161,7 @@ def resize_x(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def gaussian_kernel(
     size: scalar_int,
     sigma: scalar_float,
@@ -191,6 +194,7 @@ def gaussian_kernel(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
     sigma: Optional[scalar_float] = 1.0,
@@ -229,6 +233,7 @@ def apply_gaussian_blur(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def difference_of_gaussians(
     image: Real[Array, "y x"],
     sigma1: scalar_num,
@@ -381,6 +386,7 @@ def laplacian_of_gaussian(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def log_kernel(
     size: int,
     sigma: scalar_num,
@@ -419,6 +425,7 @@ def log_kernel(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def exponential_kernel(
     arr: Float[Array, "H W"], k: scalar_float
 ) -> Float[Array, "H W"]:
@@ -444,6 +451,7 @@ def exponential_kernel(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def perona_malik(
     image: Float[Array, "H W"],
     num_iter: scalar_int,
@@ -527,6 +535,7 @@ def perona_malik(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def histogram(
     image: Real[Array, "..."],
     bins: Optional[scalar_int] = 256,
@@ -569,6 +578,7 @@ def histogram(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def equalize_hist(
     image: Real[Array, "h w"],
     nbins: Optional[scalar_int] = 256,
@@ -639,6 +649,7 @@ def equalize_hist(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def equalize_adapthist(
     image: Real[Array, "h w"],
     kernel_size: Optional[scalar_int] = 8,
@@ -734,6 +745,7 @@ def equalize_adapthist(
 
 
 @jaxtyped(typechecker=beartype)
+@jax.jit
 def wiener(
     img: Float[Array, "h w"],
     kernel_size: Union[int, Tuple[int, int]] = 3,

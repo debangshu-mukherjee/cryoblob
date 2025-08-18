@@ -40,8 +40,7 @@ import pandas as pd
 from beartype import beartype
 from beartype.typing import Dict, List, Literal, Optional, Tuple, Union
 from cryoblob.blobs import blob_list_log, preprocessing
-from cryoblob.types import (MRC_Image, PreprocessingConfig, scalar_float,
-                            scalar_int)
+from cryoblob.types import MRC_Image, PreprocessingConfig, scalar_float, scalar_int
 from cryoblob.valid import make_mrc_image, make_preprocessing_config
 from jax import device_get, device_put, vmap
 from jaxtyping import Array, Float, jaxtyped

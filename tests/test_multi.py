@@ -18,7 +18,6 @@ if __name__ == "__main__":
 
 
 class TestHessianMatrix(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-5, 5, 50), jnp.linspace(-5, 5, 50))
@@ -74,7 +73,6 @@ class TestHessianMatrix(chex.TestCase, parameterized.TestCase):
 
 
 class TestRidgeDetection(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-10, 10, 100), jnp.linspace(-10, 10, 100))
@@ -157,7 +155,6 @@ class TestRidgeDetection(chex.TestCase, parameterized.TestCase):
 
 
 class TestDistanceTransform(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-10, 10, 80), jnp.linspace(-10, 10, 80))
@@ -212,7 +209,6 @@ class TestDistanceTransform(chex.TestCase, parameterized.TestCase):
 
 
 class TestWatershedSegmentation(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-10, 10, 60), jnp.linspace(-10, 10, 60))
@@ -297,7 +293,6 @@ class TestWatershedSegmentation(chex.TestCase, parameterized.TestCase):
 
 
 class TestHessianBlobDetection(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-20, 20, 120), jnp.linspace(-20, 20, 120))
@@ -384,7 +379,6 @@ class TestHessianBlobDetection(chex.TestCase, parameterized.TestCase):
 
 
 class TestEnhancedBlobDetection(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-30, 30, 150), jnp.linspace(-30, 30, 150))
@@ -547,7 +541,6 @@ class TestEnhancedBlobDetection(chex.TestCase, parameterized.TestCase):
 
 
 class TestIntegrationMultiMethods(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-15, 15, 100), jnp.linspace(-15, 15, 100))

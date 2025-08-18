@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -10,12 +9,11 @@ import mrcfile
 import numpy as np
 import pandas as pd
 from absl.testing import parameterized
-from cryoblob.types import MRC_Image, make_MRC_Image, scalar_float
+from cryoblob.types import MRC_Image
 from cryoblob.valid import PreprocessingConfig
 
 
 class TestFileParams(chex.TestCase):
-
     @patch("cryoblob.files.files")
     @patch("builtins.open")
     @patch("json.load")
@@ -35,7 +33,6 @@ class TestFileParams(chex.TestCase):
 
 
 class TestLoadMRC(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         self.test_dir = tempfile.mkdtemp()
@@ -103,7 +100,6 @@ class TestLoadMRC(chex.TestCase, parameterized.TestCase):
 
 
 class TestProcessSingleFile(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         self.test_dir = tempfile.mkdtemp()
@@ -200,7 +196,6 @@ class TestProcessSingleFile(chex.TestCase, parameterized.TestCase):
 
 
 class TestProcessBatchOfFiles(chex.TestCase):
-
     @patch("cryoblob.files.process_single_file")
     @patch("jax.vmap")
     def test_process_batch_of_files(self, mock_vmap, mock_process_single):
@@ -244,7 +239,6 @@ class TestProcessBatchOfFiles(chex.TestCase):
 
 
 class TestFolderBlobs(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         self.test_dir = tempfile.mkdtemp()
@@ -337,21 +331,16 @@ class TestFolderBlobs(chex.TestCase, parameterized.TestCase):
         with patch("cryoblob.files.process_batch_of_files") as mock_process:
             mock_process.return_value = [(jnp.array([]), "test.mrc")]
 
-            result_df = cb.folder_blobs(
-                self.test_dir + "/", exponential=True, gblur=5, background=10
-            )
-
             call_args = mock_process.call_args
             preprocessing_config = call_args[0][1]
 
             assert isinstance(preprocessing_config, PreprocessingConfig)
-            assert preprocessing_config.exponential == True
+            assert preprocessing_config.exponential
             assert preprocessing_config.gblur == 5
             assert preprocessing_config.background == 10
 
 
 class TestMemoryManagement(chex.TestCase):
-
     @patch("mrcfile.open")
     def test_estimate_batch_size(self, mock_mrcfile):
         mock_mrc = MagicMock()
@@ -393,7 +382,6 @@ class TestMemoryManagement(chex.TestCase):
 
 
 class TestDataFrameOutput(chex.TestCase):
-
     def test_dataframe_columns(self):
         with patch("glob.glob") as mock_glob:
             mock_glob.return_value = []
@@ -456,8 +444,8 @@ class TestPreprocessingConfigIntegration(chex.TestCase):
                     call_args = mock_process.call_args
                     config = call_args[0][1]
 
-                    assert config.exponential == False
-                    assert config.logarizer == False
+                    assert not config.exponential
+                    assert not config.logarizer
                     assert config.gblur == 0
                     assert config.background == 0
                     assert config.apply_filter == 0

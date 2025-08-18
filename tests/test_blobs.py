@@ -7,7 +7,6 @@ from cryoblob.types import make_MRC_Image
 
 
 class TestConnectedComponents(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         self.simple_binary = jnp.zeros((5, 5, 5), dtype=bool)
@@ -69,7 +68,6 @@ class TestConnectedComponents(chex.TestCase, parameterized.TestCase):
 
 
 class TestCenterOfMass(chex.TestCase, parameterized.TestCase):
-
     @chex.all_variants
     def test_center_of_mass_single_component(self):
         image = jnp.zeros((5, 5, 5))
@@ -122,7 +120,6 @@ class TestCenterOfMass(chex.TestCase, parameterized.TestCase):
 
 
 class TestFindParticleCoords(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         self.results_3d = jnp.zeros((10, 10, 10))
@@ -156,7 +153,6 @@ class TestFindParticleCoords(chex.TestCase, parameterized.TestCase):
 
 
 class TestPreprocessing(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-1, 1, 20), jnp.linspace(-1, 1, 20))
@@ -227,7 +223,6 @@ class TestPreprocessing(chex.TestCase, parameterized.TestCase):
 
 
 class TestBlobListLog(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-10, 10, 100), jnp.linspace(-10, 10, 100))
@@ -343,7 +338,6 @@ class TestBlobListLog(chex.TestCase, parameterized.TestCase):
 
 
 class TestIntegration(chex.TestCase, parameterized.TestCase):
-
     @chex.all_variants
     def test_full_pipeline(self):
         x, y = jnp.meshgrid(jnp.linspace(-5, 5, 50), jnp.linspace(-5, 5, 50))

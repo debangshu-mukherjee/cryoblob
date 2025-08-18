@@ -34,12 +34,21 @@ Functions
 import jax.numpy as jnp
 from beartype import beartype
 from beartype.typing import Optional, Union
-from cryoblob.types import (AdaptiveFilterConfig, BlobDetectionConfig,
-                            EnhancedBlobDetectionConfig, FileProcessingConfig,
-                            HessianBlobConfig, MRC_Image, MRCMetadata,
-                            PreprocessingConfig, RidgeDetectionConfig,
-                            WatershedConfig, scalar_bool, scalar_float,
-                            scalar_int)
+from cryoblob.types import (
+    AdaptiveFilterConfig,
+    BlobDetectionConfig,
+    EnhancedBlobDetectionConfig,
+    FileProcessingConfig,
+    HessianBlobConfig,
+    MRC_Image,
+    MRCMetadata,
+    PreprocessingConfig,
+    RidgeDetectionConfig,
+    WatershedConfig,
+    scalar_bool,
+    scalar_float,
+    scalar_int,
+)
 from jax import lax
 from jaxtyping import Array, Bool, Float, Int, Num, jaxtyped
 

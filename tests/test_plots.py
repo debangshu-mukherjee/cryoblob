@@ -15,7 +15,6 @@ from cryoblob.types import make_MRC_Image
 
 
 class TestPlotMRC(chex.TestCase, parameterized.TestCase):
-
     def setUp(self):
         super().setUp()
         self.sample_data = jnp.linspace(0, 100, 100).reshape(10, 10)
@@ -255,7 +254,6 @@ class TestPlotMRC(chex.TestCase, parameterized.TestCase):
 
 
 class TestPlotIntegration(chex.TestCase):
-
     def setUp(self):
         super().setUp()
         x, y = jnp.meshgrid(jnp.linspace(-5, 5, 100), jnp.linspace(-5, 5, 100))

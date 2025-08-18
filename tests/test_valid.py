@@ -2,17 +2,26 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
-from cryoblob.valid import (AdaptiveFilterConfig, BlobAnalysisConfig,
-                            BlobDetectionConfig, EnhancedBlobDetectionConfig,
-                            FileProcessingConfig, HessianBlobConfig,
-                            MRCMetadata, PreprocessingConfig,
-                            RidgeDetectionConfig, ValidationPipeline,
-                            WatershedConfig, create_comprehensive_pipeline,
-                            create_default_pipeline,
-                            create_elongated_objects_pipeline,
-                            create_fast_pipeline, create_high_quality_pipeline,
-                            create_overlapping_blobs_pipeline,
-                            validate_mrc_metadata)
+from cryoblob.valid import (
+    AdaptiveFilterConfig,
+    BlobAnalysisConfig,
+    BlobDetectionConfig,
+    EnhancedBlobDetectionConfig,
+    FileProcessingConfig,
+    HessianBlobConfig,
+    MRCMetadata,
+    PreprocessingConfig,
+    RidgeDetectionConfig,
+    ValidationPipeline,
+    WatershedConfig,
+    create_comprehensive_pipeline,
+    create_default_pipeline,
+    create_elongated_objects_pipeline,
+    create_fast_pipeline,
+    create_high_quality_pipeline,
+    create_overlapping_blobs_pipeline,
+    validate_mrc_metadata,
+)
 from pydantic import ValidationError
 
 

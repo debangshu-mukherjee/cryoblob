@@ -4,11 +4,9 @@ import jax.numpy as jnp
 import pytest
 from absl.testing import parameterized
 from jax import random
+from cryoblob.adapt import adaptive_wiener, adaptive_threshold
 
 jax.config.update("jax_enable_x64", True)
-
-from cryoblob.adapt import *
-from cryoblob.types import *
 
 if __name__ == "__main__":
     pytest.main([__file__])
@@ -36,7 +34,7 @@ class test_adaptive_wiener(chex.TestCase):
             learning_rate=learning_rate,
             iterations=10,
         )
-        assert_shape(filtered_img, (32, 32))
+        chex.assert_shape(filtered_img, (32, 32))
         chex.assert_scalar_in_range(optimized_noise, 1e-8, 1.0)
 
 
@@ -61,6 +59,6 @@ class test_adaptive_threshold(chex.TestCase):
             learning_rate=learning_rate,
             iterations=10,
         )
-        assert_shape(thresh_img, (32, 32))
+        chex.assert_shape(thresh_img, (32, 32))
         chex.assert_scalar_in_range(optimized_thresh, 0.0, 1.0)
         chex.assert_scalar_in_range(optimized_slope, 1.0, 50.0)

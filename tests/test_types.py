@@ -1,14 +1,9 @@
-import chex
-import jax
 import jax.numpy as jnp
-import pytest
 from absl.testing import parameterized
-from cryoblob.types import MRC_Image, scalar_float, scalar_int, scalar_num
-from jax import tree_util
+from cryoblob.types import scalar_float, scalar_int, scalar_num
 
 
 class TestTypeAliases(parameterized.TestCase):
-
     def test_scalar_float_accepts_python_float(self):
         val: scalar_float = 3.14
         assert isinstance(val, float)
