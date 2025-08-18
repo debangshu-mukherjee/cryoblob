@@ -66,7 +66,7 @@ def make_mrc_image(
     """
     Description
     -----------
-    Factory function to create an MRC_Image instance.
+    Factory function to create an MRC_Image instance with validation.
 
     Parameters
     ----------
@@ -85,19 +85,89 @@ def make_mrc_image(
     - `mode` (scalar_int):
         Data type mode from MRC header (e.g., 0: int8, 2: float32).
 
+    Flow
+    ----
+    - Extract image shape and number of dimensions
+    - Validate image_data has 2 or 3 dimensions with non-zero size, fallback to 1x1 array if invalid
+    - Convert voxel_size to JAX array and validate it has exactly 3 elements
+    - Ensure all voxel_size elements are positive, replace non-positive values with 1.0
+    - Convert origin to JAX array and validate it has exactly 3 elements, default to zeros if invalid
+    - Convert all scalar parameters to JAX arrays with appropriate dtypes
+    - Validate data_max is not less than data_min, set equal if invalid
+    - Clamp data_mean to be within [data_min, data_max] range
+    - Validate mode is within valid MRC mode range [0-6], default to mode 2 (float32) if invalid
+    - Return validated MRC_Image PyTree
+
     Returns
     -------
     - `MRC_Image`:
-        An instance of the MRC_Image PyTree structure.
+        A validated instance of the MRC_Image PyTree structure.
     """
+    image_shape = jnp.shape(image_data)
+    ndim = len(image_shape)
+    
+    image_data_validated = lax.cond(
+        (ndim < 2) | (ndim > 3) | jnp.any(jnp.array(image_shape) <= 0),
+        lambda x: jnp.ones((1, 1), dtype=x.dtype),
+        lambda x: x,
+        image_data
+    )
+    
+    voxel_size_arr: Float[Array, "3"] = jnp.asarray(voxel_size, dtype=jnp.float32)
+    voxel_size_validated: Float[Array, "3"] = lax.cond(
+        (jnp.size(voxel_size_arr) != 3) | jnp.any(voxel_size_arr <= 0),
+        lambda x: jnp.ones(3, dtype=jnp.float32),
+        lambda x: x,
+        voxel_size_arr
+    )
+    
+    voxel_size_validated = jnp.where(
+        voxel_size_validated <= 0,
+        jnp.ones_like(voxel_size_validated),
+        voxel_size_validated
+    )
+    
+    origin_arr: Float[Array, "3"] = jnp.asarray(origin, dtype=jnp.float32)
+    origin_validated: Float[Array, "3"] = lax.cond(
+        jnp.size(origin_arr) != 3,
+        lambda x: jnp.zeros(3, dtype=jnp.float32),
+        lambda x: x,
+        origin_arr
+    )
+    
+    data_min_arr: Float[Array, ""] = jnp.asarray(data_min, dtype=jnp.float32)
+    data_max_arr: Float[Array, ""] = jnp.asarray(data_max, dtype=jnp.float32)
+    data_mean_arr: Float[Array, ""] = jnp.asarray(data_mean, dtype=jnp.float32)
+    mode_arr: Int[Array, ""] = jnp.asarray(mode, dtype=jnp.int32)
+    
+    data_max_validated: Float[Array, ""] = lax.cond(
+        data_max_arr < data_min_arr,
+        lambda x: data_min_arr,
+        lambda x: x,
+        data_max_arr
+    )
+    
+    data_mean_validated: Float[Array, ""] = jnp.clip(
+        data_mean_arr, 
+        data_min_arr, 
+        data_max_validated
+    )
+    
+    mode_validated: Int[Array, ""] = lax.cond(
+        (mode_arr < 0) | (mode_arr > 6),
+        lambda x: jnp.asarray(2, dtype=jnp.int32),
+        lambda x: x,
+        mode_arr
+    )
+    
     return MRC_Image(
-        image_data=image_data,
-        voxel_size=voxel_size,
-        origin=origin,
-        data_min=data_min,
-        data_max=data_max,
-        data_mean=data_mean,
-        mode=mode,
+        image_data=image_data_validated,
+        voxel_size=voxel_size_validated,
+        origin=origin_validated,
+        data_min=data_min_arr,
+        data_max=data_max_validated,
+        data_mean=data_mean_validated,
+        mode=mode_validated,
     )
 
 
