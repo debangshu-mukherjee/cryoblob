@@ -159,6 +159,7 @@ Submodules
 from .adapt import adaptive_threshold, adaptive_wiener
 from .blobs import (
     blob_list_log,
+    blob_list_log_watershed,
     center_of_mass_3d,
     find_connected_components,
     find_particle_coords,
@@ -238,6 +239,7 @@ __all__: list[str] = [
     "find_particle_coords",
     "preprocessing",
     "blob_list_log",
+    "blob_list_log_watershed",
     "file_params",
     "load_mrc",
     "process_single_file",

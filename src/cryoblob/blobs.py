@@ -308,3 +308,118 @@ def blob_list_log(
         axis=1,
     )
     return scaled_coords
+
+
+@jaxtyped(typechecker=beartype)
+def blob_list_log_watershed(
+    mrc_image: MRC_Image,
+    min_blob_size: Optional[scalar_num] = 5,
+    max_blob_size: Optional[scalar_num] = 20,
+    blob_step: Optional[scalar_num] = 1,
+    downscale: Optional[scalar_num] = 4,
+    std_threshold: Optional[scalar_num] = 6,
+    merge_distance_factor: Optional[scalar_float] = 0.6,
+    particles_dark: Optional[bool] = True,
+) -> Float[Array, "n 3"]:
+    """
+    Description
+    -----------
+    LoG detection with distance-transform watershed recovery of overlapping blobs.
+    Runs `blob_list_log` for high-precision detections, then recovers particles that
+    LoG merges in dense clusters: the (optionally inverted) image is thresholded to a
+    foreground mask, a Euclidean distance transform is computed, and its local maxima
+    provide one seed per particle even inside a cluster. Only seeds that do not
+    coincide with an existing LoG detection are added, so LoG's precision is retained
+    while recall improves on overlapping fields.
+
+    Parameters
+    ----------
+    - `mrc_image` (MRC_Image): input image structure.
+    - `min_blob_size`, `max_blob_size`, `blob_step`, `downscale`, `std_threshold`:
+        forwarded to `blob_list_log`.
+    - `merge_distance_factor` (scalar_float, optional): a watershed seed is added only
+        if no LoG detection lies within this factor times the seed's radius. Default 0.6.
+    - `particles_dark` (bool, optional): True if particles are darker than background
+        (the image is inverted before thresholding). Default True.
+
+    Returns
+    -------
+    - `blobs` (Float[Array, "n 3"]): array of (Y, X, size) in pixels, in the same
+        convention as `blob_list_log`. The size column is the LoG scale for LoG
+        detections and the inscribed radius for recovered watershed detections.
+    """
+    import numpy as np
+    from scipy import ndimage as ndi
+    from skimage.filters import threshold_otsu, gaussian
+    from skimage.feature import peak_local_max
+    from skimage.segmentation import watershed as _watershed
+    from skimage.transform import rescale as _rescale
+
+    log = np.asarray(
+        blob_list_log(mrc_image, min_blob_size, max_blob_size, blob_step,
+                      downscale, std_threshold),
+        dtype=np.float32,
+    ).reshape(-1, 3)
+
+    voxel = np.asarray(mrc_image.voxel_size, dtype=np.float32)
+    vy, vx = float(voxel[1]), float(voxel[2])
+    vsize = float(np.sqrt(max(vy * vx, 1e-12)))
+    ds = max(float(downscale), 1.0)
+
+    image = np.asarray(mrc_image.image_data, dtype=np.float32)
+    # radius window (full-res px) from the LoG scale range
+    min_r = max(4.0, float(min_blob_size) * 1.4142 * ds * 0.6)
+    max_r = float(max_blob_size) * 1.4142 * ds * 3.0
+
+    small = _rescale(image, 1.0 / ds, anti_aliasing=True) if ds > 1 else image
+    work = (small.max() - small) if particles_dark else small
+    rng = float(np.ptp(work))
+    if rng <= 0:
+        return jnp.asarray(log, dtype=jnp.float32)
+    work = gaussian((work - work.min()) / (rng + 1e-9), sigma=2)
+    try:
+        thr = float(threshold_otsu(work))
+    except Exception:
+        thr = float(work.mean() + 0.5 * work.std())
+    mask = ndi.binary_fill_holes(work > thr)
+    if not mask.any():
+        return jnp.asarray(log, dtype=jnp.float32)
+
+    dist = ndi.distance_transform_edt(mask)
+    peaks = peak_local_max(dist, min_distance=int(max(3, min_r / ds)),
+                           labels=mask, exclude_border=False)
+    if len(peaks) == 0:
+        return jnp.asarray(log, dtype=jnp.float32)
+    markers = np.zeros_like(dist, dtype=np.int32)
+    for i, (py, px) in enumerate(peaks, start=1):
+        markers[py, px] = i
+    labels = _watershed(-dist, markers, mask=mask)
+
+    wat = []  # [Y_px, X_px, r_px] full-res
+    for lab in range(1, int(labels.max()) + 1):
+        ys, xs = np.where(labels == lab)
+        if len(ys) < 4:
+            continue
+        r = (len(ys) / np.pi) ** 0.5 * ds
+        if not (min_r <= r <= max_r):
+            continue
+        wat.append([ys.mean() * ds, xs.mean() * ds, r])
+    if not wat:
+        return jnp.asarray(log, dtype=jnp.float32)
+    wat = np.asarray(wat, dtype=np.float32)
+
+    # keep all LoG; add only watershed detections not near an existing LoG det
+    log_y_px = log[:, 0] / max(vy, 1e-9) if len(log) else np.empty(0)
+    log_x_px = log[:, 1] / max(vx, 1e-9) if len(log) else np.empty(0)
+    added = []
+    for wy_px, wx_px, wr_px in wat:
+        if len(log) == 0 or np.all(
+            np.hypot(log_y_px - wy_px, log_x_px - wx_px)
+            > float(merge_distance_factor) * wr_px
+        ):
+            added.append([wy_px * vy, wx_px * vx, wr_px * vsize])
+    if not added:
+        return jnp.asarray(log, dtype=jnp.float32)
+    merged = np.vstack([log, np.asarray(added, dtype=np.float32)]) if len(log) else \
+        np.asarray(added, dtype=np.float32)
+    return jnp.asarray(merged, dtype=jnp.float32)
