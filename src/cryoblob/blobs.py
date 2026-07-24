@@ -302,7 +302,8 @@ def blob_list_log(
     scaled_coords: Float[Array, "n 3"] = jnp.concatenate(
         [
             downscale * coords[:, :2] * voxel_size[1:][::-1],
-            (coords[:, 2:] * blob_step + min_blob_size)
+            downscale
+            * (coords[:, 2:] * blob_step + min_blob_size)
             * jnp.sqrt(voxel_size[1] * voxel_size[2]),
         ],
         axis=1,
