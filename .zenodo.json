@@ -1,0 +1,22 @@
+{
+  "upload_type": "software",
+  "title": "cryoblob: Particle Picking of Cryo-EM Datasets",
+  "version": "2026.7.0",
+  "description": "JAX-based, JIT-compiled package for detecting amorphous blobs in low-SNR cryo-EM images. Reference-free Laplacian-of-Gaussian particle picking with an FFT-based scale-space detector, an optional LoG+watershed pass for overlapping particles, adaptive (gradient-descent-tuned) preprocessing, and a differentiable response field.",
+  "license": "MIT",
+  "keywords": [
+    "electron microscopy",
+    "cryo-EM",
+    "image processing",
+    "JAX",
+    "blob detection",
+    "particle picking"
+  ],
+  "creators": [
+    {"name": "Mukherjee, Debangshu", "affiliation": "Oak Ridge National Laboratory"},
+    {"name": "Williams, Alexis N.", "affiliation": "Oak Ridge National Laboratory"},
+    {"name": "Cox, Spenser R.", "affiliation": "Oak Ridge National Laboratory"},
+    {"name": "McDonnell, Marshall T.", "affiliation": "Oak Ridge National Laboratory"},
+    {"name": "Borisevich, Albina Y.", "affiliation": "Oak Ridge National Laboratory"}
+  ]
+}
