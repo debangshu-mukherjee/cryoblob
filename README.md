@@ -1,5 +1,5 @@
 [![PyPI Downloads](https://static.pepy.tech/badge/cryoblob)](https://pepy.tech/projects/cryoblob)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/cryoblob.svg)](https://badge.fury.io/py/cryoblob)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15548975.svg)](https://doi.org/10.5281/zenodo.15548975)
@@ -24,7 +24,7 @@
   * **Hessian-based detection**: Superior boundary localization
 * **Adaptive filtering**: Includes adaptive Wiener filtering and thresholding
 * **Batch processing**: Memory-optimized batch processing for large datasets
-* **Validation**: Comprehensive parameter validation using Pydantic models
+* **Validation**: Runtime type/shape validation using beartype and jaxtyping
 
 ## Installation
 
@@ -48,8 +48,8 @@ blobs = cb.blob_list_log(mrc_image)
 # Process a folder of images
 results = cb.folder_blobs("path/to/folder/")
 
-# Plot results
-cb.plot_mrc(mrc_image)
+# Plot results (overlay the detected blobs on the image)
+cb.plot_mrc(mrc_image, blobs=blobs)
 ```
 
 ### Enhanced Multi-Method Detection
@@ -106,7 +106,7 @@ The cryoblob package is organized into the following modules:
 * **multi**: Multi-method detection for elongated objects and overlapping blobs
 * **plots**: Visualization functions for MRC images and results
 * **types**: Type definitions and PyTree structures
-* **valid**: Parameter validation using Pydantic models
+* **valid**: Parameter validation and presets (beartype + jaxtyping)
 
 ## Use Cases
 

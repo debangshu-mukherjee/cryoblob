@@ -23,6 +23,7 @@ from cryoblob.types import MRC_Image, scalar_int
 from jaxtyping import Array, Float
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.patches import Circle
 
 
 @beartype
@@ -31,11 +32,14 @@ def plot_mrc(
     image_size: Optional[Tuple[scalar_int, scalar_int]] = (15, 15),
     cmap: Optional[str] = "magma",
     mode: Optional[str] = "plain",
+    blobs: Optional[Float[Array, "n 3"]] = None,
+    blob_color: Optional[str] = "cyan",
 ) -> None:
     """
     Description
     -----------
-    Plot an MRC image using Matplotlib with an optional scaling mode and scalebar.
+    Plot an MRC image using Matplotlib with an optional scaling mode and scalebar,
+    optionally overlaying detected blobs.
 
     Parameters
     ----------
@@ -53,6 +57,15 @@ def plot_mrc(
         - "log": Plot logarithmically scaled image data.
         - "exp": Plot exponentially scaled image data.
         Default is "plain".
+    - `blobs` (Float[Array, "n 3"], optional):
+        Blob list as returned by `blob_list_log` / `blob_list_log_watershed`,
+        with columns (Y, X, size) in physical units (i.e. already multiplied by
+        the voxel size). When provided, each blob is drawn as a circle at its
+        detected position and radius. The physical coordinates are converted
+        back to pixel coordinates using `mrc_image.voxel_size`, so the overlay
+        aligns with the displayed image. Default is None (no overlay).
+    - `blob_color` (str, optional):
+        Matplotlib color for the blob circles. Default is "cyan".
 
     Returns
     -------
@@ -62,6 +75,8 @@ def plot_mrc(
     Examples
     --------
     >>> plot_mrc(mrc_image, image_size=(10, 10), cmap="viridis", mode="log")
+    >>> blobs = blob_list_log(mrc_image, min_blob_size=8, max_blob_size=110)
+    >>> plot_mrc(mrc_image, blobs=blobs)
     """
     fig: Figure
     ax: Axes
@@ -89,6 +104,27 @@ def plot_mrc(
     )
     ax.imshow(np.asarray(image_to_plot), cmap=cmap, origin="lower")
     ax.add_artist(scalebar)
+    if blobs is not None:
+        blobs_np: np.ndarray = np.asarray(blobs)
+        if blobs_np.size > 0:
+            voxel_y: float = float(mrc_image.voxel_size[1])
+            voxel_x: float = float(mrc_image.voxel_size[2])
+            # Invert the physical scaling applied inside blob_list_log:
+            # column 0 (Y) was multiplied by voxel_x, column 1 (X) by voxel_y,
+            # and the size by sqrt(voxel_y * voxel_x).
+            y_pix: np.ndarray = blobs_np[:, 0] / voxel_x
+            x_pix: np.ndarray = blobs_np[:, 1] / voxel_y
+            r_pix: np.ndarray = blobs_np[:, 2] / np.sqrt(voxel_y * voxel_x)
+            for xc, yc, rc in zip(x_pix, y_pix, r_pix):
+                ax.add_patch(
+                    Circle(
+                        (xc, yc),
+                        radius=max(float(rc), 1.0),
+                        edgecolor=blob_color,
+                        facecolor="none",
+                        linewidth=1.0,
+                    )
+                )
     ax.axis("off")
     fig.tight_layout()
     plt.show()

@@ -61,74 +61,21 @@ def find_connected_components(
     - `num_labels` (int):
         Number of connected components found
     """
-    shape = binary_image.shape
-    initial_labels = jnp.where(
-        binary_image > 0, jnp.arange(1, binary_image.size + 1).reshape(shape), 0
-    )
+    # Eager, JAX-version-safe connected components. The original pure-JAX
+    # label-propagation used Python control flow on traced arrays and dynamic-shape
+    # ops (jnp.argwhere/jnp.unique) inside lax.while_loop, which modern JAX rejects.
+    # blob_list_log runs eagerly, so use standard SciPy labeling with matching
+    # 6-/26-connectivity.
+    import numpy as _np
+    from scipy import ndimage as _ndi
 
-    def get_neighbors(pos, labels):
-        x, y, z = pos
-        neighbors = []
-        if connectivity == 6:
-            offsets = [
-                (-1, 0, 0),
-                (1, 0, 0),
-                (0, -1, 0),
-                (0, 1, 0),
-                (0, 0, -1),
-                (0, 0, 1),
-            ]
-        else:
-            offsets = [
-                (dx, dy, dz)
-                for dx in [-1, 0, 1]
-                for dy in [-1, 0, 1]
-                for dz in [-1, 0, 1]
-                if not (dx == dy == dz == 0)
-            ]
-        for dx, dy, dz in offsets:
-            nx, ny, nz = x + dx, y + dy, z + dz
-            if 0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2]:
-                neighbors.append(labels[nx, ny, nz])
-        return jnp.array(neighbors)
-
-    def update_label(old_label, new_label, labels):
-        return jnp.where(labels == old_label, new_label, labels)
-
-    def merge_components(labels):
-        positions = jnp.argwhere(binary_image > 0)
-
-        def scan_fn(labels, pos):
-            neighbors = get_neighbors(pos, labels)
-            valid_neighbors = neighbors[neighbors > 0]
-            if len(valid_neighbors) > 0:
-                min_label = jnp.min(valid_neighbors)
-                current_label = labels[tuple(pos)]
-                if current_label > min_label:
-                    labels = update_label(current_label, min_label, labels)
-            return labels, None
-
-        labels, _ = lax.scan(scan_fn, labels, positions)
-        return labels
-
-    def cond_fn(state):
-        prev_labels, curr_labels, _ = state
-        return jnp.any(prev_labels != curr_labels)
-
-    def body_fn(state):
-        _, curr_labels, i = state
-        new_labels = merge_components(curr_labels)
-        return curr_labels, new_labels, i + 1
-
-    final_labels, _, _ = lax.while_loop(
-        cond_fn, body_fn, (initial_labels, initial_labels, 0)
-    )
-    unique_labels = jnp.unique(final_labels)
-    num_labels: scalar_int = len(unique_labels) - 1
-    label_map = jnp.zeros(jnp.max(unique_labels) + 1, dtype=jnp.int32)
-    label_map = label_map.at[unique_labels].set(jnp.arange(len(unique_labels)))
-    sequential_labels = label_map[final_labels]
-
+    arr = _np.asarray(binary_image) > 0
+    rank = arr.ndim
+    conn = 1 if int(connectivity) == 6 else rank
+    structure = _ndi.generate_binary_structure(rank, conn)
+    labeled, num = _ndi.label(arr, structure=structure)
+    sequential_labels = jnp.asarray(labeled, dtype=jnp.int32)
+    num_labels: scalar_int = int(num)
     return sequential_labels, num_labels
 
 
@@ -158,24 +105,23 @@ def center_of_mass_3d(
         Array of centroid coordinates for each label
     """
 
-    def centroid(label_idx: scalar_int) -> Float[Array, "3"]:
-        mask: Bool[Array, "x y z"] = labels == label_idx
-        masked_image: Float[Array, "x y z"] = jnp.where(mask, image, 0.0)
-        total_mass: scalar_float = jnp.sum(masked_image)
-        coords: Float[Array, "3"] = jnp.array(
-            [
-                jnp.sum(masked_image * jnp.arange(image.shape[0])[:, None, None])
-                / total_mass,
-                jnp.sum(masked_image * jnp.arange(image.shape[1])[None, :, None])
-                / total_mass,
-                jnp.sum(masked_image * jnp.arange(image.shape[2])[None, None, :])
-                / total_mass,
-            ]
-        )
+    # Eager, memory-light intensity-weighted centroids. The original vmapped over
+    # every label, each materializing a full (x,y,z) volume -> O(num_labels * volume)
+    # memory (OOM at low downscale on large images). scipy.ndimage.center_of_mass
+    # computes the identical sum(image*coord)/sum(image) per label. blob_list_log
+    # runs eagerly, so this is a drop-in.
+    import numpy as _np
+    from scipy import ndimage as _ndi
 
-        return coords
-
-    centroids: Float[Array, "n 3"] = jax.vmap(centroid)(jnp.arange(1, num_labels + 1))
+    n = int(num_labels)
+    if n <= 0:
+        return jnp.zeros((0, 3), dtype=jnp.float32)
+    img = _np.asarray(image)
+    lbl = _np.asarray(labels)
+    coms = _ndi.center_of_mass(img, labels=lbl, index=list(range(1, n + 1)))
+    centroids: Float[Array, "n 3"] = jnp.asarray(
+        _np.asarray(coms, dtype=_np.float32).reshape(n, 3), dtype=jnp.float32
+    )
     return centroids
 
 
@@ -278,9 +224,9 @@ def preprocessing(
     if logarizer:
         image_proc = jnp.log(image_proc)
     if gblur > 0:
-        image_proc = apply_gaussian_blur(image_proc, sigma=gblur)
+        image_proc = apply_gaussian_blur(image_proc, sigma=float(gblur))
     if background > 0:
-        image_proc = image_proc - apply_gaussian_blur(image_proc, sigma=background)
+        image_proc = image_proc - apply_gaussian_blur(image_proc, sigma=float(background))
     if apply_filter > 0:
         image_proc = wiener(image_proc, kernel_size=apply_filter)
     if return_params:
@@ -356,9 +302,125 @@ def blob_list_log(
     scaled_coords: Float[Array, "n 3"] = jnp.concatenate(
         [
             downscale * coords[:, :2] * voxel_size[1:][::-1],
-            (coords[:, 2:] * blob_step + min_blob_size)[:, None]
+            downscale
+            * (coords[:, 2:] * blob_step + min_blob_size)
             * jnp.sqrt(voxel_size[1] * voxel_size[2]),
         ],
         axis=1,
     )
     return scaled_coords
+
+
+@jaxtyped(typechecker=beartype)
+def blob_list_log_watershed(
+    mrc_image: MRC_Image,
+    min_blob_size: Optional[scalar_num] = 5,
+    max_blob_size: Optional[scalar_num] = 20,
+    blob_step: Optional[scalar_num] = 1,
+    downscale: Optional[scalar_num] = 4,
+    std_threshold: Optional[scalar_num] = 6,
+    merge_distance_factor: Optional[scalar_float] = 0.6,
+    particles_dark: Optional[bool] = True,
+) -> Float[Array, "n 3"]:
+    """
+    Description
+    -----------
+    LoG detection with distance-transform watershed recovery of overlapping blobs.
+    Runs `blob_list_log` for high-precision detections, then recovers particles that
+    LoG merges in dense clusters: the (optionally inverted) image is thresholded to a
+    foreground mask, a Euclidean distance transform is computed, and its local maxima
+    provide one seed per particle even inside a cluster. Only seeds that do not
+    coincide with an existing LoG detection are added, so LoG's precision is retained
+    while recall improves on overlapping fields.
+
+    Parameters
+    ----------
+    - `mrc_image` (MRC_Image): input image structure.
+    - `min_blob_size`, `max_blob_size`, `blob_step`, `downscale`, `std_threshold`:
+        forwarded to `blob_list_log`.
+    - `merge_distance_factor` (scalar_float, optional): a watershed seed is added only
+        if no LoG detection lies within this factor times the seed's radius. Default 0.6.
+    - `particles_dark` (bool, optional): True if particles are darker than background
+        (the image is inverted before thresholding). Default True.
+
+    Returns
+    -------
+    - `blobs` (Float[Array, "n 3"]): array of (Y, X, size) in pixels, in the same
+        convention as `blob_list_log`. The size column is the LoG scale for LoG
+        detections and the inscribed radius for recovered watershed detections.
+    """
+    import numpy as np
+    from scipy import ndimage as ndi
+    from skimage.filters import threshold_otsu, gaussian
+    from skimage.feature import peak_local_max
+    from skimage.segmentation import watershed as _watershed
+    from skimage.transform import rescale as _rescale
+
+    log = np.asarray(
+        blob_list_log(mrc_image, min_blob_size, max_blob_size, blob_step,
+                      downscale, std_threshold),
+        dtype=np.float32,
+    ).reshape(-1, 3)
+
+    voxel = np.asarray(mrc_image.voxel_size, dtype=np.float32)
+    vy, vx = float(voxel[1]), float(voxel[2])
+    vsize = float(np.sqrt(max(vy * vx, 1e-12)))
+    ds = max(float(downscale), 1.0)
+
+    image = np.asarray(mrc_image.image_data, dtype=np.float32)
+    # radius window (full-res px) from the LoG scale range
+    min_r = max(4.0, float(min_blob_size) * 1.4142 * ds * 0.6)
+    max_r = float(max_blob_size) * 1.4142 * ds * 3.0
+
+    small = _rescale(image, 1.0 / ds, anti_aliasing=True) if ds > 1 else image
+    work = (small.max() - small) if particles_dark else small
+    rng = float(np.ptp(work))
+    if rng <= 0:
+        return jnp.asarray(log, dtype=jnp.float32)
+    work = gaussian((work - work.min()) / (rng + 1e-9), sigma=2)
+    try:
+        thr = float(threshold_otsu(work))
+    except Exception:
+        thr = float(work.mean() + 0.5 * work.std())
+    mask = ndi.binary_fill_holes(work > thr)
+    if not mask.any():
+        return jnp.asarray(log, dtype=jnp.float32)
+
+    dist = ndi.distance_transform_edt(mask)
+    peaks = peak_local_max(dist, min_distance=int(max(3, min_r / ds)),
+                           labels=mask, exclude_border=False)
+    if len(peaks) == 0:
+        return jnp.asarray(log, dtype=jnp.float32)
+    markers = np.zeros_like(dist, dtype=np.int32)
+    for i, (py, px) in enumerate(peaks, start=1):
+        markers[py, px] = i
+    labels = _watershed(-dist, markers, mask=mask)
+
+    wat = []  # [Y_px, X_px, r_px] full-res
+    for lab in range(1, int(labels.max()) + 1):
+        ys, xs = np.where(labels == lab)
+        if len(ys) < 4:
+            continue
+        r = (len(ys) / np.pi) ** 0.5 * ds
+        if not (min_r <= r <= max_r):
+            continue
+        wat.append([ys.mean() * ds, xs.mean() * ds, r])
+    if not wat:
+        return jnp.asarray(log, dtype=jnp.float32)
+    wat = np.asarray(wat, dtype=np.float32)
+
+    # keep all LoG; add only watershed detections not near an existing LoG det
+    log_y_px = log[:, 0] / max(vy, 1e-9) if len(log) else np.empty(0)
+    log_x_px = log[:, 1] / max(vx, 1e-9) if len(log) else np.empty(0)
+    added = []
+    for wy_px, wx_px, wr_px in wat:
+        if len(log) == 0 or np.all(
+            np.hypot(log_y_px - wy_px, log_x_px - wx_px)
+            > float(merge_distance_factor) * wr_px
+        ):
+            added.append([wy_px * vy, wx_px * vx, wr_px * vsize])
+    if not added:
+        return jnp.asarray(log, dtype=jnp.float32)
+    merged = np.vstack([log, np.asarray(added, dtype=np.float32)]) if len(log) else \
+        np.asarray(added, dtype=np.float32)
+    return jnp.asarray(merged, dtype=jnp.float32)

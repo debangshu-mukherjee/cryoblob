@@ -105,13 +105,15 @@ def make_mrc_image(
     """
     image_shape = jnp.shape(image_data)
     ndim = len(image_shape)
-    
-    image_data_validated = lax.cond(
-        (ndim < 2) | (ndim > 3) | jnp.any(jnp.array(image_shape) <= 0),
-        lambda x: jnp.ones((1, 1), dtype=x.dtype),
-        lambda x: x,
-        image_data
-    )
+
+    # Shape/ndim are static, so validate with a Python conditional. (The previous
+    # lax.cond required both branches to return identical shapes, but the invalid
+    # branch returned (1,1) while the valid branch returned the full image shape,
+    # which raised a shape-mismatch TypeError for any real image.)
+    if ndim < 2 or ndim > 3 or any(int(s) <= 0 for s in image_shape):
+        image_data_validated = jnp.ones((1, 1), dtype=image_data.dtype)
+    else:
+        image_data_validated = image_data
     
     voxel_size_arr: Float[Array, "3"] = jnp.asarray(voxel_size, dtype=jnp.float32)
     voxel_size_validated: Float[Array, "3"] = lax.cond(

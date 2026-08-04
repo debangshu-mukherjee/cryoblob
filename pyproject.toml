@@ -1,6 +1,6 @@
 [project]
 name = "cryoblob"
-version = "2025.8.2"
+version = "2026.7.0"
 description = "Particle Picking of Cryo-EM Datasets"
 authors = [
     {name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, 
@@ -37,6 +37,8 @@ dependencies = [
     "beartype",
     "pandas>=2.2.3",
     "tqdm>=4.66.0",
+    "scipy>=1.10.0",
+    "scikit-image>=0.22.0",
     "jax[cuda12]>=0.4.30 ; sys_platform == 'linux'",
     "jax>=0.4.30 ; sys_platform == 'win64'",
 ]

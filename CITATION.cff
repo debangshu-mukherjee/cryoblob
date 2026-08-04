@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "cryoblob: Particle Picking of Cryo-EM Datasets"
+version: 2026.7.0
+license: MIT
+type: software
+repository-code: "https://github.com/debangshu-mukherjee/cryoblob"
+keywords:
+  - electron microscopy
+  - cryo-EM
+  - image processing
+  - JAX
+  - blob detection
+  - particle picking
+authors:
+  - family-names: Mukherjee
+    given-names: Debangshu
+    affiliation: Oak Ridge National Laboratory
+  - family-names: Williams
+    given-names: Alexis N.
+    affiliation: Oak Ridge National Laboratory
+  - family-names: Cox
+    given-names: Spenser R.
+    affiliation: Oak Ridge National Laboratory
+  - family-names: McDonnell
+    given-names: Marshall T.
+    affiliation: Oak Ridge National Laboratory
+  - family-names: Borisevich
+    given-names: Albina Y.
+    affiliation: Oak Ridge National Laboratory

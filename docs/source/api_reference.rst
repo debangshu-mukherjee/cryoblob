@@ -95,8 +95,9 @@ Method Selection
 | Elongated        | ``ridge_``        | ``multi_scale_ridge_`` | ``ridge_``       |
 | (pill-shaped)    | ``detection``     | ``detector``           | ``threshold``    |
 +------------------+-------------------+------------------------+------------------+
-| Overlapping      | ``watershed_``    | ``enhanced_blob_``     | ``min_marker_``  |
-|                  | ``segmentation``  | ``detection`` (full)   | ``distance``     |
+| Overlapping      | ``blob_list_log_``| ``watershed_``         | ``merge_``       |
+|                  | ``watershed``     | ``segmentation``       | ``distance_``    |
+|                  |                   |                        | ``factor``       |
 +------------------+-------------------+------------------------+------------------+
 | Mixed/Complex    | ``enhanced_blob_``| Factory functions      | Use predefined   |
 |                  | ``detection``     | from ``valid`` module  | configurations   |
@@ -108,6 +109,9 @@ Key Functions by Category
 **Basic Detection**
 
 * ``blob_list_log()`` - Traditional LoG-based circular blob detection
+* ``blob_list_log_watershed()`` - LoG detection plus a distance-transform
+  watershed pass that recovers touching/overlapping particles that plain LoG
+  merges (keeps all LoG detections, adds only new watershed detections)
 * ``preprocessing()`` - Image preprocessing pipeline
 
 **Enhanced Detection**
@@ -132,6 +136,17 @@ Quick Usage Examples
 .. code-block:: python
 
    blobs = cb.blob_list_log(mrc_image, min_blob_size=5, max_blob_size=20)
+
+   # Overlay the detections on the image
+   cb.plot_mrc(mrc_image, blobs=blobs)
+
+**Overlapping Circular Blobs (LoG + watershed)**
+
+.. code-block:: python
+
+   # Recovers touching particles that plain LoG merges
+   blobs = cb.blob_list_log_watershed(mrc_image, min_blob_size=5, max_blob_size=20)
+   cb.plot_mrc(mrc_image, blobs=blobs)
 
 **Elongated Objects**
 

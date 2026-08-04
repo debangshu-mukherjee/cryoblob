@@ -36,6 +36,8 @@ Functions:
     Perform Wiener filtering on an image using JAX.
 """
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 from beartype import beartype
@@ -49,7 +51,6 @@ jax.config.update("jax_enable_x64", True)
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
 def image_resizer(
     orig_image: Union[Real[Array, "y x"], Real[Array, "y x c"]],
     new_sampling: Union[scalar_num, Real[Array, "2"]],
@@ -85,8 +86,10 @@ def image_resizer(
         jnp.atleast_1d(new_sampling), (2,)
     ).astype(jnp.float32)
     in_y, in_x = image.shape
-    new_y_len: scalar_int = jnp.round(in_y / sampling_array[0]).astype(jnp.int32)
-    new_x_len: scalar_int = jnp.round(in_x / sampling_array[1]).astype(jnp.int32)
+    # Static (Python int) output lengths: an output shape that depends on a traced
+    # value cannot be jitted. Kept eager here; resize_x jits per-length statically.
+    new_y_len: int = max(1, int(round(float(in_y) / float(sampling_array[0]))))
+    new_x_len: int = max(1, int(round(float(in_x) / float(sampling_array[1]))))
     resized_x: Float[Array, "y new_x"] = resize_x(image, new_x_len)
     swapped: Float[Array, "new_x y"] = jnp.swapaxes(resized_x, 0, 1)
     resized_xy: Float[Array, "new_x new_y"] = resize_x(swapped, new_y_len)
@@ -95,7 +98,7 @@ def image_resizer(
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
+@partial(jax.jit, static_argnums=(1,))
 def resize_x(
     x_image: Num[Array, "y x"], new_x_len: scalar_int
 ) -> Float[Array, "y new_x"]:
@@ -146,9 +149,12 @@ def resize_x(
             final_m, data_sum, _ = lax.while_loop(while_cond, while_body, init_state)
 
             fraction: Float[Array, ""] = final_m - (nn + 1) * orig_x_len / new_x_len
-            last_contribution: Float[Array, ""] = fraction * col[final_m - 1]
+            # Pin to the column dtype: Python-int division promotes to float64,
+            # which would make the scan carry dtype differ from its input (float32)
+            # and break lax.scan's carry-type-equality requirement.
+            last_contribution: Float[Array, ""] = (fraction * col[final_m - 1]).astype(col.dtype)
             adjusted_sum: Float[Array, ""] = data_sum - last_contribution
-            result: Float[Array, ""] = (adjusted_sum * new_x_len) / orig_x_len
+            result: Float[Array, ""] = ((adjusted_sum * new_x_len) / orig_x_len).astype(col.dtype)
 
             return (final_m, last_contribution), result
 
@@ -161,7 +167,7 @@ def resize_x(
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
+@partial(jax.jit, static_argnums=(0,))
 def gaussian_kernel(
     size: scalar_int,
     sigma: scalar_float,
@@ -194,7 +200,6 @@ def gaussian_kernel(
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
 def apply_gaussian_blur(
     image: Real[Array, "y x"],
     sigma: Optional[scalar_float] = 1.0,
@@ -222,12 +227,15 @@ def apply_gaussian_blur(
     - `blurred` (Float[Array, "yp xp"]):
         Blurred image.
     """
-    kernel_size = jnp.abs(kernel_size)
-    kernel_size = (kernel_size // 2) * 2 + 1
-    kernel_size = jnp.maximum(kernel_size, 1)
-    kernel: Float[Array, "kernel_size kernel_size"] = gaussian_kernel(
-        kernel_size, sigma
-    )
+    # Static (Python int) odd kernel size so gaussian_kernel can jit on a concrete
+    # size (its output shape depends on this value).
+    ks = int(abs(int(kernel_size)))
+    ks = (ks // 2) * 2 + 1
+    ks = max(ks, 1)
+    # sigma may be a traced value (e.g. multi-scale ridge detection vmaps over
+    # scales); do NOT coerce it to a Python float. Only the kernel SIZE must be
+    # static (its output shape depends on it); gaussian_kernel handles traced sigma.
+    kernel: Float[Array, "kernel_size kernel_size"] = gaussian_kernel(ks, sigma)
     blurred: Float[Array, "yp xp"] = signal.convolve2d(image, kernel, mode=mode)
     return blurred
 
@@ -352,30 +360,34 @@ def laplacian_of_gaussian(
     - Convolve the image with LoG kernel.
     - Normalize output if required.
     """
-    kernel_size: int = 101
-    coords: Float[Array, "kernel_size"] = jnp.arange(-kernel_size, kernel_size, 1)
-    x: Float[Array, "kernel_size kernel_size"]
-    y: Float[Array, "kernel_size kernel_size"]
-    x, y = jnp.meshgrid(coords, coords)
-    r2: Float[Array, "kernel_size kernel_size"] = (x**2) + (y**2)
-    gaussian: Float[Array, "kernel_size kernel_size"] = jnp.exp(
-        -r2 / (2 * standard_deviation**2)
-    )
-    kernel_arr: Float[Array, "kernel_size kernel_size"] = (
-        -1.0
-        / (jnp.pi * standard_deviation**4)
-        * (1 - r2 / (2 * standard_deviation**2))
-        * gaussian
-    )
-    sampled_image = jax.lax.cond(
+    # FFT-based Laplacian of Gaussian. cryoblob's kernel -1/(pi s^4)(1 - r^2/2s^2)
+    # exp(-r^2/2s^2) IS the normalized LoG operator (Laplacian of a Gaussian), whose
+    # exact frequency response is H(f) = -(2*pi)^2 |f|^2 exp(-2*pi^2 s^2 |f|^2).
+    # Applying it in the Fourier domain is memory-light and, unlike the old fixed
+    # 202x202 spatial kernel, is NOT truncated for large sigma - so large blobs on
+    # large images no longer OOM and are captured accurately at low downscale.
+    sampled_image: Float[Array, "y x"] = jax.lax.cond(
         hist_stretch,
         equalize_hist,
         lambda img: img.astype(jnp.float32),
         image,
+    ).astype(jnp.float32)
+
+    h, w = sampled_image.shape
+    fy: Float[Array, "y"] = jnp.fft.fftfreq(h).astype(jnp.float32)
+    fx: Float[Array, "x"] = jnp.fft.fftfreq(w).astype(jnp.float32)
+    fy2, fx2 = jnp.meshgrid(fy, fx, indexing="ij")
+    freq2: Float[Array, "y x"] = fy2**2 + fx2**2
+    sigma = jnp.asarray(standard_deviation, dtype=jnp.float32)
+    transfer: Float[Array, "y x"] = (
+        -((2.0 * jnp.pi) ** 2)
+        * freq2
+        * jnp.exp(-2.0 * (jnp.pi**2) * (sigma**2) * freq2)
     )
-    convolved: Float[Array, "y x"] = signal.convolve2d(
-        sampled_image, kernel_arr, mode="same"
-    )
+    convolved: Float[Array, "y x"] = jnp.fft.ifft2(
+        jnp.fft.fft2(sampled_image) * transfer
+    ).real.astype(jnp.float32)
+
     filtered = jax.lax.cond(
         normalized,
         lambda x: x / standard_deviation,
@@ -535,7 +547,7 @@ def perona_malik(
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
+@partial(jax.jit, static_argnums=(1,))
 def histogram(
     image: Real[Array, "..."],
     bins: Optional[scalar_int] = 256,
@@ -578,7 +590,7 @@ def histogram(
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
+@partial(jax.jit, static_argnums=(1,))
 def equalize_hist(
     image: Real[Array, "h w"],
     nbins: Optional[scalar_int] = 256,
@@ -745,7 +757,7 @@ def equalize_adapthist(
 
 
 @jaxtyped(typechecker=beartype)
-@jax.jit
+@partial(jax.jit, static_argnums=(1,))
 def wiener(
     img: Float[Array, "h w"],
     kernel_size: Union[int, Tuple[int, int]] = 3,
@@ -781,24 +793,29 @@ def wiener(
     It estimates the local mean and variance around each pixel.
     """
 
-    kernel_size_arr: Integer[Array, "2"] = lax.cond(
-        isinstance(kernel_size, int),
-        lambda k: jnp.asarray([k, k]),
-        lambda k: jnp.asarray(k),
-        kernel_size,
-    )
-    kernel_area: scalar_float = kernel_size_arr[0] * kernel_size_arr[1]
-    kernel: Float[Array, "ksize_h ksize_w"] = (
-        jnp.ones(kernel_size_arr, dtype=jnp.float64) / kernel_area
-    )
+    # kernel_size is a static jit arg: the kernel SHAPE depends on it, so it must be
+    # concrete. Branch with a plain Python conditional (jnp.ndim==0 handles a scalar
+    # int or a 0-d array the decorator may hand us; otherwise it's a (h, w) pair).
+    # The original used lax.cond with a Python `isinstance` predicate, which traced
+    # both branches and returned mismatched shapes -> crash for every input.
+    if jnp.ndim(kernel_size) == 0:
+        k = int(kernel_size)
+        ks: Tuple[int, int] = (k, k)
+    else:
+        ks = (int(kernel_size[0]), int(kernel_size[1]))
+    kernel_area: float = float(ks[0] * ks[1])
+    kernel: Float[Array, "ksize_h ksize_w"] = jnp.ones(ks, dtype=jnp.float32) / kernel_area
     local_mean: Float[Array, "h w"] = signal.convolve2d(img, kernel, mode="same")
     local_var: Float[Array, "h w"] = signal.convolve2d(
         jnp.square(img), kernel, mode="same"
     ) - jnp.square(local_mean)
     local_var = jnp.maximum(local_var, 0)
-    noise_estimate: float = lax.cond(
-        noise is None, lambda v: jnp.mean(v), lambda _: noise, local_var
-    )
+    # `noise is None` is a static (compile-time) test; lax.cond traced both branches
+    # and the None branch broke when noise was None. Plain Python if.
+    if noise is None:
+        noise_estimate = jnp.mean(local_var)
+    else:
+        noise_estimate = noise
     result: Float[Array, "h w"] = local_mean + (
         (local_var - noise_estimate) / jnp.maximum(local_var, noise_estimate)
     ) * (img - local_mean)
