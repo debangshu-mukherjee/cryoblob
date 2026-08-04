@@ -8,6 +8,24 @@ sys.path.insert(0, os.path.abspath("../.."))
 
 on_rtd = os.environ.get("READTHEDOCS") == "True"
 
+# Sphinx/nbsphinx cannot include source files that live outside the docs source
+# directory. The canonical tutorial notebooks live at the repo root (`tutorials/`),
+# so copy them into `docs/source/tutorials/` at build time (this runs on Read the
+# Docs too, before the toctree is resolved). The copied dir is git-ignored.
+import shutil as _shutil
+from pathlib import Path as _Path
+
+_src_dir = _Path(__file__).resolve().parent
+_root_tutorials = _src_dir.parent.parent / "tutorials"
+_docs_tutorials = _src_dir / "tutorials"
+if _root_tutorials.is_dir():
+    _docs_tutorials.mkdir(exist_ok=True)
+    for _nb in _root_tutorials.glob("*.ipynb"):
+        try:
+            _shutil.copy2(_nb, _docs_tutorials / _nb.name)
+        except OSError:
+            pass
+
 
 def read_pyproject_toml():
     pyproject_path = os.path.abspath("../../pyproject.toml")

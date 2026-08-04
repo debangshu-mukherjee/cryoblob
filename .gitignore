@@ -137,3 +137,6 @@ target/
 
 
 .qodo
+
+# Build-time copy of tutorial notebooks (see docs/source/conf.py)
+docs/source/tutorials/
