@@ -143,7 +143,7 @@ _, elongated, _ = cb.enhanced_blob_detection(
 ## Performance
 
 * **Memory Efficient**: Automatic batch size optimization and memory management
-* **Scalable**: Multi-device and multi-host processing support
+* **Scalable**: memory-aware batch processing of large image folders on a single device (CPU or GPU)
 * **Fast**: JIT compilation and GPU acceleration where available
 * **Flexible**: Selective method usage to optimize speed vs. comprehensiveness
 
