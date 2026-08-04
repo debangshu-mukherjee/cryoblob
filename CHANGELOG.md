@@ -2,6 +2,16 @@
 
 All notable changes to **cryoblob** are documented here.
 
+## [2026.7.1]
+
+### Documentation
+- Tutorials page now renders the example notebooks on Read the Docs. They were
+  referenced from outside the docs source tree (`../../tutorials/*.ipynb`), which
+  Sphinx cannot include, so the page rendered empty; the notebooks are now copied
+  into the docs source tree at build time.
+- Added a feature guide for `blob_list_log_watershed` and the `plot_mrc` blob
+  overlay.
+
 ## [2026.7.0]
 
 ### Fixed

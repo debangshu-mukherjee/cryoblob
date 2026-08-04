@@ -1,6 +1,6 @@
 [project]
 name = "cryoblob"
-version = "2026.7.0"
+version = "2026.7.1"
 description = "Particle Picking of Cryo-EM Datasets"
 authors = [
     {name = "Debangshu Mukherjee", email = "mukherjeed@ornl.gov"}, 
